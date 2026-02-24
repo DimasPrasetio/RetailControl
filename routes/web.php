@@ -1,18 +1,32 @@
 <?php
 
+use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\LogoutController;
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| Web Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "web" middleware group. Make something great!
-|
-*/
+// ─── Guest routes ─────────────────────────────────────────────────────────────
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [LoginController::class, 'show'])->name('login');
+    Route::post('/login', [LoginController::class, 'store'])->name('login.store');
+});
 
-Route::get('/', function () {
-    return view('welcome');
+// ─── Authenticated routes ──────────────────────────────────────────────────────
+Route::middleware(['auth', 'active'])->group(function () {
+
+    Route::post('/logout', [LogoutController::class, 'destroy'])->name('logout');
+
+    Route::get('/dashboard', fn () => view('dashboard'))->name('dashboard');
+
+    // ─── User Management (Super Admin only via UserPolicy) ─────────────────
+    Route::prefix('admin')->name('admin.')->group(function () {
+
+        Route::resource('users', UserController::class)
+            ->except(['show']);
+
+        Route::get('audit-logs', [AuditLogController::class, 'index'])
+            ->name('audit-logs.index')
+            ->middleware('permission:audit_logs.view');
+    });
 });
