@@ -17,7 +17,14 @@ Route::middleware(['auth', 'active'])->group(function () {
 
     Route::post('/logout', [LogoutController::class, 'destroy'])->name('logout');
 
-    Route::get('/dashboard', fn () => view('dashboard'))->name('dashboard');
+    Route::get('/dashboard', function () {
+        $stats = [
+            'total_users'  => \App\Models\User::count(),
+            'active_users' => \App\Models\User::where('is_active', true)->count(),
+            'audit_today'  => \App\Models\AuditLog::whereDate('created_at', today())->count(),
+        ];
+        return view('dashboard', compact('stats'));
+    })->name('dashboard');
 
     // ─── User Management (Super Admin only via UserPolicy) ─────────────────
     Route::prefix('admin')->name('admin.')->group(function () {

@@ -1,123 +1,213 @@
 @extends('layouts.app')
 
 @section('title', 'Tambah User')
+@section('page-title', 'Tambah User')
 
 @section('content')
+
+{{-- ── Back link + subtitle ─────────────────────────────────────────────── --}}
 <div class="mb-6">
-    <a href="{{ route('admin.users.index') }}" class="text-sm text-blue-600 hover:underline">
-        ← Kembali ke Daftar User
+    <a href="{{ route('admin.users.index') }}"
+       class="inline-flex items-center gap-1.5 text-sm text-gray-500 transition hover:text-blue-600">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+        </svg>
+        Kembali ke Daftar User
     </a>
-    <h2 class="text-xl font-semibold text-gray-800 mt-2">Tambah User Baru</h2>
 </div>
 
-<div class="bg-white rounded-lg border border-gray-200 p-6 max-w-lg">
-    <form method="POST" action="{{ route('admin.users.store') }}">
+{{-- ── Form card ────────────────────────────────────────────────────────── --}}
+<div class="max-w-2xl overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80">
+
+    {{-- Card header --}}
+    <div class="border-b border-gray-100 px-6 py-4">
+        <h2 class="text-base font-semibold text-gray-900">Informasi User Baru</h2>
+        <p class="mt-0.5 text-sm text-gray-500">Isi semua field yang diperlukan untuk membuat akun pengguna baru.</p>
+    </div>
+
+    <form method="POST" action="{{ route('admin.users.store') }}" class="divide-y divide-gray-100">
         @csrf
 
-        {{-- Nama --}}
-        <div class="mb-4">
-            <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap</label>
-            <input type="text" id="name" name="name" value="{{ old('name') }}" required
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 @error('name') border-red-500 @enderror">
-            @error('name')
-                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-            @enderror
+        {{-- Section: Identitas ────────────────────────────────────────── --}}
+        <div class="px-6 py-5 space-y-4">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Identitas</p>
+
+            {{-- Nama --}}
+            <div>
+                <label for="name" class="mb-1.5 block text-sm font-medium text-gray-700">Nama Lengkap</label>
+                <input type="text" id="name" name="name" value="{{ old('name') }}" required
+                       class="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900
+                              transition placeholder-gray-400
+                              focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20
+                              @error('name') border-red-400 bg-red-50 @enderror"
+                       placeholder="Nama lengkap pengguna">
+                @error('name')
+                    <p class="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        {{ $message }}
+                    </p>
+                @enderror
+            </div>
+
+            {{-- Username --}}
+            <div>
+                <label for="username" class="mb-1.5 block text-sm font-medium text-gray-700">Username</label>
+                <div class="relative">
+                    <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-gray-400 text-sm">@</span>
+                    <input type="text" id="username" name="username" value="{{ old('username') }}" required
+                           pattern="^[a-z0-9_]+" minlength="3" maxlength="50"
+                           class="block w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-8 pr-4 text-sm text-gray-900
+                                  font-mono transition placeholder-gray-400
+                                  focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20
+                                  @error('username') border-red-400 bg-red-50 @enderror"
+                           placeholder="huruf_kecil_angka_underscore">
+                </div>
+                @error('username')
+                    <p class="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        {{ $message }}
+                    </p>
+                @enderror
+            </div>
+
+            {{-- Email --}}
+            <div>
+                <label for="email" class="mb-1.5 block text-sm font-medium text-gray-700">Email</label>
+                <input type="email" id="email" name="email" value="{{ old('email') }}" required
+                       class="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900
+                              transition placeholder-gray-400
+                              focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20
+                              @error('email') border-red-400 bg-red-50 @enderror"
+                       placeholder="email@contoh.com">
+                @error('email')
+                    <p class="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        {{ $message }}
+                    </p>
+                @enderror
+            </div>
         </div>
 
-        {{-- Username --}}
-        <div class="mb-4">
-            <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
-            <input type="text" id="username" name="username" value="{{ old('username') }}" required
-                pattern="^[a-z0-9_]+" minlength="3" maxlength="50"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 @error('username') border-red-500 @enderror"
-                placeholder="huruf_kecil angka underscore">
-            @error('username')
-                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-            @enderror
+        {{-- Section: Password ─────────────────────────────────────────── --}}
+        <div class="px-6 py-5 space-y-4">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Password</p>
+
+            {{-- Password --}}
+            <div>
+                <label for="password" class="mb-1.5 block text-sm font-medium text-gray-700">Password</label>
+                <div class="relative">
+                    <input type="password" id="password" name="password" required
+                           class="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 pr-11 text-sm text-gray-900
+                                  transition placeholder-gray-400
+                                  focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20
+                                  @error('password') border-red-400 bg-red-50 @enderror"
+                           placeholder="Min. 8 karakter (huruf + angka)">
+                    <button type="button" onclick="togglePwd('password', 'eye-create')"
+                            class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition hover:text-gray-600">
+                        <svg id="eye-create" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        </svg>
+                    </button>
+                </div>
+                @error('password')
+                    <p class="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        {{ $message }}
+                    </p>
+                @enderror
+            </div>
+
+            {{-- Konfirmasi Password --}}
+            <div>
+                <label for="password_confirmation" class="mb-1.5 block text-sm font-medium text-gray-700">Konfirmasi Password</label>
+                <input type="password" id="password_confirmation" name="password_confirmation" required
+                       class="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900
+                              transition placeholder-gray-400
+                              focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+                       placeholder="Ulangi password di atas">
+            </div>
         </div>
 
-        {{-- Email --}}
-        <div class="mb-4">
-            <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input type="email" id="email" name="email" value="{{ old('email') }}" required
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 @error('email') border-red-500 @enderror">
-            @error('email')
-                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-            @enderror
+        {{-- Section: Role & Akses ─────────────────────────────────────── --}}
+        <div class="px-6 py-5 space-y-4">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Role & Akses</p>
+
+            {{-- Role --}}
+            <div>
+                <label for="role_id" class="mb-1.5 block text-sm font-medium text-gray-700">Role</label>
+                <select id="role_id" name="role_id" required
+                        onchange="toggleBranchField(this)"
+                        class="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900
+                               transition
+                               focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20
+                               @error('role_id') border-red-400 bg-red-50 @enderror">
+                    <option value="">— Pilih role —</option>
+                    @foreach ($roles as $role)
+                        <option value="{{ $role->id }}"
+                                data-requires-branch="{{ $role->name->requiresBranch() ? 'true' : 'false' }}"
+                                {{ old('role_id') == $role->id ? 'selected' : '' }}>
+                            {{ $role->name->label() }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('role_id')
+                    <p class="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        {{ $message }}
+                    </p>
+                @enderror
+            </div>
+
+            {{-- Branch ID (conditional) --}}
+            <div id="branch-field" class="hidden">
+                <label for="branch_id" class="mb-1.5 block text-sm font-medium text-gray-700">
+                    ID Cabang
+                    <span class="ml-1 text-xs font-normal text-orange-500">* wajib untuk role ini</span>
+                </label>
+                <input type="number" id="branch_id" name="branch_id" value="{{ old('branch_id') }}" min="1"
+                       class="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900
+                              transition placeholder-gray-400
+                              focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20
+                              @error('branch_id') border-red-400 bg-red-50 @enderror"
+                       placeholder="ID cabang (tersedia di Module 02)">
+                @error('branch_id')
+                    <p class="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        {{ $message }}
+                    </p>
+                @enderror
+            </div>
+
+            {{-- Status aktif --}}
+            <div class="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                <div class="flex h-5 items-center">
+                    <input type="checkbox" id="is_active" name="is_active" value="1"
+                           {{ old('is_active', '1') ? 'checked' : '' }}
+                           class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-400/30">
+                </div>
+                <div>
+                    <label for="is_active" class="cursor-pointer text-sm font-medium text-gray-700">Akun aktif</label>
+                    <p class="text-xs text-gray-500">Pengguna dapat login setelah akun diaktifkan</p>
+                </div>
+            </div>
         </div>
 
-        {{-- Password --}}
-        <div class="mb-4">
-            <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input type="password" id="password" name="password" required
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 @error('password') border-red-500 @enderror"
-                placeholder="Min. 8 karakter (huruf + angka)">
-            @error('password')
-                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-            @enderror
-        </div>
-
-        {{-- Konfirmasi Password --}}
-        <div class="mb-4">
-            <label for="password_confirmation" class="block text-sm font-medium text-gray-700 mb-1">Konfirmasi Password</label>
-            <input type="password" id="password_confirmation" name="password_confirmation" required
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-
-        {{-- Role --}}
-        <div class="mb-4">
-            <label for="role_id" class="block text-sm font-medium text-gray-700 mb-1">Role</label>
-            <select id="role_id" name="role_id" required
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 @error('role_id') border-red-500 @enderror"
-                onchange="toggleBranchField(this)">
-                <option value="">— Pilih role —</option>
-                @foreach ($roles as $role)
-                    <option value="{{ $role->id }}"
-                        data-requires-branch="{{ $role->name->requiresBranch() ? 'true' : 'false' }}"
-                        {{ old('role_id') == $role->id ? 'selected' : '' }}>
-                        {{ $role->name->label() }}
-                    </option>
-                @endforeach
-            </select>
-            @error('role_id')
-                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-            @enderror
-        </div>
-
-        {{-- Branch ID (hanya untuk role non-global) --}}
-        <div id="branch-field" class="mb-4 hidden">
-            <label for="branch_id" class="block text-sm font-medium text-gray-700 mb-1">
-                ID Cabang
-                <span class="text-xs text-gray-400 font-normal ml-1">(wajib untuk role ini)</span>
-            </label>
-            <input type="number" id="branch_id" name="branch_id" value="{{ old('branch_id') }}"
-                min="1"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 @error('branch_id') border-red-500 @enderror"
-                placeholder="ID cabang akan tersedia di Module 02">
-            @error('branch_id')
-                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-            @enderror
-        </div>
-
-        {{-- Status --}}
-        <div class="mb-6">
-            <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="is_active" value="1"
-                    {{ old('is_active', '1') ? 'checked' : '' }}
-                    class="h-4 w-4 text-blue-600 border-gray-300 rounded">
-                <span class="text-sm text-gray-700">Akun aktif</span>
-            </label>
-        </div>
-
-        <div class="flex items-center gap-3">
-            <button type="submit"
-                class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-6 py-2 rounded-lg transition">
-                Simpan
-            </button>
-            <a href="{{ route('admin.users.index') }}" class="text-sm text-gray-500 hover:text-gray-700">
+        {{-- Footer actions ────────────────────────────────────────────── --}}
+        <div class="flex items-center justify-end gap-3 bg-gray-50/70 px-6 py-4">
+            <a href="{{ route('admin.users.index') }}"
+               class="rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:border-gray-300 hover:text-gray-900">
                 Batal
             </a>
+            <button type="submit"
+                    class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-500">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                </svg>
+                Simpan User
+            </button>
         </div>
+
     </form>
 </div>
 
@@ -138,10 +228,22 @@ function toggleBranchField(select) {
     }
 }
 
-// Init state on page load (e.g. validation error re-render)
+function togglePwd(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon  = document.getElementById(iconId);
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>`;
+    } else {
+        input.type = 'password';
+        icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     const select = document.getElementById('role_id');
     if (select) toggleBranchField(select);
 });
 </script>
+
 @endsection
