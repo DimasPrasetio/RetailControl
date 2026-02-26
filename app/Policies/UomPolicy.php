@@ -1,0 +1,15 @@
+<?php
+
+namespace App\Policies;
+
+use App\Models\Uom;
+use App\Models\User;
+
+class UomPolicy
+{
+    public function viewAny(User $user): bool  { return $user->hasPermission('uoms.view'); }
+    public function view(User $user, Uom $u): bool { return $user->hasPermission('uoms.view'); }
+    public function create(User $user): bool   { return $user->hasPermission('uoms.create'); }
+    public function update(User $user, Uom $u): bool { return $user->hasPermission('uoms.update'); }
+    public function deactivate(User $user, Uom $u): bool { return $user->hasPermission('uoms.deactivate'); }
+}

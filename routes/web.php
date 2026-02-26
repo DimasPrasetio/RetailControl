@@ -1,6 +1,10 @@
 <?php
 
 use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\BrandController;
+use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\ItemController;
+use App\Http\Controllers\Admin\UomController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\LogoutController;
@@ -38,5 +42,25 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('audit-logs', [AuditLogController::class, 'index'])
             ->name('audit-logs.index')
             ->middleware('permission:audit_logs.view');
+
+        // ─── Master Data: Brands ───────────────────────────────────────────
+        Route::resource('brands', BrandController::class)->except(['show', 'destroy']);
+        Route::patch('brands/{brand}/deactivate', [BrandController::class, 'deactivate'])
+            ->name('brands.deactivate');
+
+        // ─── Master Data: Categories ──────────────────────────────────────
+        Route::resource('categories', CategoryController::class)->except(['show', 'destroy']);
+        Route::patch('categories/{category}/deactivate', [CategoryController::class, 'deactivate'])
+            ->name('categories.deactivate');
+
+        // ─── Master Data: UoM ─────────────────────────────────────────────
+        Route::resource('uoms', UomController::class)->except(['show', 'destroy']);
+
+        // ─── Master Data: Items (SKU) ──────────────────────────────────────
+        Route::get('items/import', [ItemController::class, 'importForm'])->name('items.import-form');
+        Route::post('items/import', [ItemController::class, 'import'])->name('items.import');
+        Route::resource('items', ItemController::class)->except(['destroy']);
+        Route::patch('items/{item}/deactivate', [ItemController::class, 'deactivate'])
+            ->name('items.deactivate');
     });
 });
