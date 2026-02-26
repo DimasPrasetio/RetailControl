@@ -36,6 +36,31 @@ class UserPolicy
         return true;
     }
 
+    /**
+     * Nonaktifkan user (set is_active=false).
+     * Berbeda dari delete: user tetap ada di DB tapi tidak bisa login.
+     * EnsureUserIsActive middleware akan mengusir sesi yang masih aktif.
+     */
+    public function deactivate(User $authUser, User $target): bool
+    {
+        if (! $authUser->hasPermission('users.deactivate')) {
+            return false;
+        }
+
+        // Tidak boleh menonaktifkan diri sendiri
+        if ($authUser->id === $target->id) {
+            return false;
+        }
+
+        // Tidak boleh menonaktifkan Super Admin lain
+        if ($target->isSuperAdmin()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /** Hapus permanen (soft delete) — hanya super_admin via permission users.delete */
     public function delete(User $authUser, User $target): bool
     {
         if (! $authUser->hasPermission('users.delete')) {

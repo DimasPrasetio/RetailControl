@@ -25,7 +25,7 @@ class UpdateUserRequest extends FormRequest
                 Rule::unique('users', 'username')->ignore($userId)->whereNull('deleted_at'),
             ],
             'email'     => [
-                'required', 'email', 'max:150',
+                'nullable', 'email', 'max:150',
                 Rule::unique('users', 'email')->ignore($userId)->whereNull('deleted_at'),
             ],
             'password'  => ['nullable', 'confirmed', Password::min(8)->letters()->numbers()],

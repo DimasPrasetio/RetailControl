@@ -66,8 +66,9 @@ class T0104RoleConstraintAndAuditImmutabilityTest extends TestCase
     }
 
     /** @test */
-    public function admin_cabang_cannot_list_users(): void
+    public function admin_cabang_can_list_users(): void
     {
+        // admin_cabang now has users.view so they can locate users to deactivate
         $adminRoleId = Role::where('name', 'admin_cabang')->value('id');
 
         $admin = User::create([
@@ -82,7 +83,7 @@ class T0104RoleConstraintAndAuditImmutabilityTest extends TestCase
 
         $this->actingAs($admin)
             ->get(route('admin.users.index'))
-            ->assertForbidden();
+            ->assertOk();
     }
 
     /** @test */

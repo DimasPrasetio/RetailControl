@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Enums\RoleEnum;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class StoreUserRequest extends FormRequest
@@ -23,7 +21,7 @@ class StoreUserRequest extends FormRequest
                 'regex:/^[a-z0-9_]+$/',
                 'unique:users,username',
             ],
-            'email'     => ['required', 'email', 'max:150', 'unique:users,email'],
+            'email'     => ['nullable', 'email', 'max:150', 'unique:users,email'],
             'password'  => ['required', 'confirmed', Password::min(8)->letters()->numbers()],
             'role_id'   => ['required', 'exists:roles,id'],
             'branch_id' => ['nullable', 'integer'],

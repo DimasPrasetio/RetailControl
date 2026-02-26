@@ -83,6 +83,23 @@ class UserController extends Controller
             ->with('success', 'User berhasil diperbarui.');
     }
 
+    /**
+     * Nonaktifkan user (set is_active=false) tanpa menghapus dari DB.
+     * Sesi user yang sedang aktif akan diusir oleh EnsureUserIsActive middleware
+     * pada request berikutnya.
+     */
+    public function deactivate(User $user): RedirectResponse
+    {
+        Gate::authorize('deactivate', $user);
+
+        $user->update(['is_active' => false]); // Auditable trait mencatat update ke audit_logs
+
+        return redirect()
+            ->route('admin.users.index')
+            ->with('success', 'User berhasil dinonaktifkan.');
+    }
+
+    /** Hapus permanen (soft delete) — hanya super_admin */
     public function destroy(User $user): RedirectResponse
     {
         Gate::authorize('delete', $user);

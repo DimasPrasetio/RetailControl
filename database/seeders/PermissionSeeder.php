@@ -13,15 +13,18 @@ class PermissionSeeder extends Seeder
      */
     private array $permissions = [
         // User Management
-        'users.view'   => 'Lihat Daftar User',
-        'users.create' => 'Tambah User',
-        'users.update' => 'Edit User',
-        'users.delete' => 'Hapus User',
+        'users.view'       => 'Lihat Daftar User',
+        'users.create'     => 'Tambah User',
+        'users.update'     => 'Edit User',
+        'users.deactivate' => 'Nonaktifkan User',
+        'users.delete'     => 'Hapus User (Permanen)',
 
         // Transaksi POS
-        'transactions.view'   => 'Lihat Transaksi',
-        'transactions.create' => 'Buat Transaksi',
-        'transactions.void'   => 'Void Transaksi',
+        'transactions.view'           => 'Lihat Transaksi',
+        'transactions.create'         => 'Buat Transaksi',
+        'transactions.void'           => 'Void Transaksi',
+        'transactions.apply_discount' => 'Terapkan Diskon Transaksi',
+        'transactions.override_price' => 'Override Harga Transaksi',
 
         // Delivery Order
         'do.view'          => 'Lihat Delivery Order',
@@ -43,6 +46,31 @@ class PermissionSeeder extends Seeder
 
         // Audit
         'audit_logs.view' => 'Lihat Audit Log',
+
+        // Master Data — Items (SKU)
+        'items.view'       => 'Lihat Master Produk',
+        'items.create'     => 'Tambah Master Produk',
+        'items.update'     => 'Edit Master Produk',
+        'items.deactivate' => 'Nonaktifkan Master Produk',
+        'items.import'     => 'Import Master Produk dari Excel',
+
+        // Master Data — Brands
+        'brands.view'       => 'Lihat Brand',
+        'brands.create'     => 'Tambah Brand',
+        'brands.update'     => 'Edit Brand',
+        'brands.deactivate' => 'Nonaktifkan Brand',
+
+        // Master Data — Categories
+        'categories.view'       => 'Lihat Kategori',
+        'categories.create'     => 'Tambah Kategori',
+        'categories.update'     => 'Edit Kategori',
+        'categories.deactivate' => 'Nonaktifkan Kategori',
+
+        // Master Data — Units of Measure
+        'uoms.view'       => 'Lihat Satuan (UoM)',
+        'uoms.create'     => 'Tambah Satuan (UoM)',
+        'uoms.update'     => 'Edit Satuan (UoM)',
+        'uoms.deactivate' => 'Nonaktifkan Satuan (UoM)',
     ];
 
     public function run(): void

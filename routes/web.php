@@ -32,6 +32,9 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::resource('users', UserController::class)
             ->except(['show']);
 
+        Route::patch('users/{user}/deactivate', [UserController::class, 'deactivate'])
+            ->name('users.deactivate');
+
         Route::get('audit-logs', [AuditLogController::class, 'index'])
             ->name('audit-logs.index')
             ->middleware('permission:audit_logs.view');
