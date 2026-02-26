@@ -1,0 +1,482 @@
+MANAGEMENT_PRODUCT
+RANCANGAN MASTER DATA PRODUK (SKU) - TOKO MATERIAL MULTI CABANG
+Tanggal    : 2026-02-27 (Asia/Jakarta)
+Status     : MODULE 02 SELESAI — branch mod-02-product-management (commit 887abe3)
+Test Suite : 55/55 passing (32 Module02 + 23 Module01)
+Diperbarui : 2026-02-27 — sinkronisasi dengan fakta kode aktual
+
+DASAR PENYUSUNAN
+- Dokumen scope & arsitektur sistem toko material multi cabang (centralized, web-based, audit-ready).
+- Excel existing master produk: 'MASTER BOOK TOKO 250126 (1).xlsx' (11 sheet).
+- Fokus: Master Data Produk (SKU) + strategi import & normalisasi data dari Excel.
+
+TUJUAN DOKUMEN
+1) Menetapkan rancangan Master Data Produk yang stabil untuk POS, Inventory, DO, Pricing, Purchasing.
+2) Memastikan seluruh variasi atribut produk di Excel bisa ditampung (atribut dinamis per kategori).
+3) Memberikan aturan standar untuk normalisasi (format harga, diskon, kemasan) agar data siap dipakai sistem.
+4) Menyediakan ruang ekspansi yang aman (kolom cadangan) tanpa membuat sistem over-engineered.
+
+PRINSIP DESAIN (SELARAS DENGAN DOKUMEN SISTEM)
+- Single Source of Truth: master produk terpusat, semua cabang mengacu ke katalog yang sama.
+- Auditability: perubahan master produk harus tercatat (tidak boleh 'silent modification').
+- Modular & non over-engineered: cukup untuk operasi toko material; hindari ERP-level fitur.
+- SKU-first: unit yang dipakai transaksi adalah SKU/Item (barang yang benar-benar dijual).
+- Atribut dinamis terkontrol: atribut per jenis barang boleh beda, tapi tetap tervalidasi.
+
+==========================================================================================
+A. ANALISIS DATA EXISTING (EXCEL)
+==========================================================================================
+RINGKASAN SHEET
+- 'RUCIKA ': header_row=8, data_rows~116, headers=['PRODUK', 'JENIS', 'SPESIFIKASI', 'mm', 'inch', 'OD (mm)', 'HARGA', 'DISC 1', 'DISC 2', 'DISC 3', 'HARGA']
+- 'RUCIKA FITTING': header_row=11, data_rows~366, headers=['PRODUK', 'JENIS', 'MM', 'inch', 'ISI/BOX', 'HARGA / PCS', 'DISC 1', 'DISC 2', 'DISC 3']
+- 'HCL': header_row=10, data_rows~363, headers=['No', 'Type', 'Jenis', 'Outlet', 'Power', 'Harga Lama', 'Harga Baru', 'Disc', 'TEMPO', 'Disc', 'TUNAI']
+- 'MASPION': header_row=8, data_rows~103, headers=['PRODUK', 'TYPE', 'UKURAN', 'BRUTO', 'NETTO']
+- 'FITTING MASPION': header_row=6, data_rows~232, headers=['PRODUK', 'Jenis', 'Class', 'Ukuran', 'Pack', 'Bruto', 'Harga']
+- 'PIPA TRILLIUN': header_row=6, data_rows~78, headers=['PRODUK', 'TYPE', 'UKURAN', 'BRUTO', 'NETTO', 'DISC 1', 'DISC 2', 'HARGA']
+- 'EXTRANA': header_row=6, data_rows~141, headers=['PRODUK', 'JENIS', 'Ukuran', 'SATUAN', 'NYM', 'NYY', 'NYMHY', 'NYYHY', 'NFYGbY', 'NYA', 'NYAF', 'NA2XSY IEC / SNI', 'N2XSY IEC / SNI', 'N2XSEBY IEC / SNI', 'NA2XSEBY IEC / SNI', 'MVTIC / NFA2XSY-T SPLN', 'NA2XSEYBY SPLN', 'NFA2X', 'AAAC', 'AAACS', 'NFA2X-T']
+- 'MILLIARD': header_row=9, data_rows~115, headers=['PRODUK', 'JENIS', 'DIAMETER (INCH)', 'M/ROLL (m)', 'Harga/roll', 'DISC 1', 'DISC 2', 'DISC 3', 'HARGA']
+- 'MU': header_row=8, data_rows~8, headers=['MERK', 'PRODUK', 'JENIS', 'HARGA', 'DISC', 'NETTO']
+- 'NO DROP': header_row=8, data_rows~15, headers=['BRANDS', 'ITEM', 'KEMASAN', 'PRICELIST', 'NETTO']
+- 'POWER PRALON': header_row=8, data_rows~90, headers=['Produk', 'TIPE', 'MODEL', 'Inch', 'mm', 'HARGA', 'DISC 1', 'NETT 7,5%', 'DISC 2', 'NETT 18%']
+
+TEMUAN POLA UMUM
+1) Struktur sheet tidak seragam (kolom berbeda per brand/kelompok barang).
+2) Ada baris metadata sebelum header tabel (JENIS BARANG/MERK, distributor/sales, tanggal, dll).
+3) Harga & diskon tidak konsisten formatnya:
+   - Numeric murni (contoh RUCIKA/HCL/MASPION).
+   - String berformat rupiah (contoh RUCIKA FITTING: 'Rp. 14.100,-').
+   - Diskon bertingkat (DISC 1-3) berupa desimal (0.15 = 15%).
+   - Diskon nominal (contoh MU: DISC=2000).
+   - Ada hasil harga final/netto sudah dihitung (kolom HARGA/NETTO).
+4) Ada konsep kemasan/pack yang penting untuk receiving/purchasing:
+   - ISI/BOX (RUCIKA FITTING), Pack (FITTING MASPION), M/ROLL (MILLIARD), KEMASAN (NO DROP).
+5) Ada sheet berbentuk 'matrix' (EXTRANA): tipe kabel menjadi kolom (NYM, NYY, dst). Ini harus diubah (pivot) menjadi SKU per tipe.
+6) Banyak sheet mencantumkan catatan 'harga sudah PPN' atau 'PPN 11%'. Artinya price list kemungkinan sudah termasuk pajak (perlu flag).
+
+DETAIL PER SHEET (YANG PERLU DIPERHATIKAN SAAT IMPORT)
+1) RUCIKA (sheet 'RUCIKA ')
+   - Header di baris 8: PRODUK, JENIS, SPESIFIKASI, mm, inch, OD(mm), HARGA, DISC1-3, HARGA(final).
+   - DISC 1-3 berbentuk desimal (0.15=15%, 0.07=7%, 0.04=4%).
+   - Ada kolom HARGA final (sudah dihitung).
+2) RUCIKA FITTING
+   - Header di baris 11: PRODUK, JENIS, MM, inch, ISI/BOX, HARGA/PCS, DISC1-3.
+   - HARGA/PCS kadang string 'Rp....' -> harus dibersihkan ke numeric.
+   - ISI/BOX penting untuk konversi purchase unit (box) ke base unit (pcs).
+3) HCL
+   - Header di baris 10: No, Type, Jenis, Outlet, Power, Harga Lama, Harga Baru, Disc->TEMPO, Disc->TUNAI.
+   - Ini mengindikasikan 2 'price tier': tempo vs tunai (bukan atribut produk).
+4) MASPION
+   - Header di baris 8: PRODUK, TYPE, UKURAN, BRUTO, NETTO.
+   - Sudah ada netto, sehingga untuk pricing awal cukup ambil NETTO.
+5) FITTING MASPION
+   - Header di baris 6: PRODUK, Jenis, Class, Ukuran, Pack, Bruto, Harga.
+   - Pack = qty/box (atau qty/pack), Harga tampak sebagai harga setelah diskon (net).
+6) PIPA TRILLIUN
+   - Header di baris 6: PRODUK, TYPE, UKURAN, BRUTO, NETTO, DISC1, DISC2, HARGA(final).
+   - Ada netto dan final; final kemungkinan adalah setelah disc1+disc2 dari netto.
+7) EXTRANA
+   - Header di baris 6: PRODUK, JENIS, Ukuran, SATUAN, lalu kolom tipe kabel (NYM, NYY, NYMHY, ...).
+   - KET: Harga rupiah/meter. Artinya harga per meter (base_uom=meter).
+   - Wajib pivot: setiap kolom tipe kabel yang berisi harga -> menjadi baris SKU dengan attribute cable_type.
+8) MILLIARD
+   - Header di baris 9: PRODUK, JENIS, DIAMETER(INCH), M/ROLL(m), Harga/roll, DISC1-3, HARGA(final).
+   - Ada trailing space pada PRODUK (contoh 'SEAGULL '), harus trim.
+9) MU
+   - Header di baris 8: MERK, PRODUK, JENIS, HARGA, DISC, NETTO.
+   - DISC adalah nominal (contoh 2000), bukan persen.
+10) NO DROP
+   - Header di baris 8: BRANDS, ITEM, KEMASAN, PRICELIST, NETTO.
+   - KEMASAN seperti '1 Kg', '4 Kg', '20 Kg' -> perlu distandarkan (pack_size + unit).
+11) POWER PRALON
+   - Header di baris 8: Produk, TIPE, MODEL, Inch, mm, HARGA, DISC1->NETT 7,5%, DISC2->NETT 18%.
+   - Ada 2 level nett (7.5% dan 18%). Ini bisa diperlakukan sebagai price tier atau promo/level customer.
+
+RISIKO KUALITAS DATA DARI EXCEL (DAN SOLUSI)
+- Harga format string: lakukan parse 'Rp', '.', ',', ',-' menjadi integer.
+- Inch/MM campur format (1, 1/2, '1 1/4', 5/8"): distandarkan ke string canonical (lihat aturan naming).
+- Nilai kosong: beberapa kolom bisa kosong (harga tertentu tidak tersedia). Pada import, baris/variant tanpa harga bisa ditandai 'inactive' atau 'price missing'.
+- Diskon bertingkat: jika sudah ada HARGA final/netto, gunakan final sebagai price aktif dan simpan disc breakdown untuk audit.
+
+==========================================================================================
+B. RANCANGAN MASTER DATA PRODUK (SKU)
+==========================================================================================
+B1. KONSEP UTAMA
+1) SKU / ITEM
+   - 1 SKU = 1 barang yang dijual (dipilih di POS, dicatat stok, masuk DO, masuk PO, dll).
+   - Contoh: 'PIPA PVC RUCIKA AW 25mm 4M' adalah 1 SKU.
+   - Contoh: 'KABEL EXTRANA 2x1,5 NYM' dan 'KABEL EXTRANA 2x1,5 NYY' adalah 2 SKU berbeda.
+2) PRODUCT FAMILY (OPSIONAL)
+   - Untuk grouping display saja (mis. keluarga kabel EXTRANA ukuran 2x1,5).
+   - Tidak wajib untuk MVP, karena semua operasi bisa cukup dengan SKU.
+
+B2. STRUKTUR FIELD: INTI vs DINAMIS
+1) Field inti (wajib, stabil untuk semua jenis barang)
+   - sku_code (unik)
+   - name (nama tampil di POS)
+   - brand_id
+   - category_id
+   - base_uom_id (satuan jual / satuan stok)
+   - pack_qty (konversi dari kemasan purchase ke base_uom; default 1)
+   - is_active
+   - barcode (opsional; bisa banyak via tabel terpisah jika dibutuhkan)
+2) Atribut dinamis (berbeda antar kategori)
+   - disimpan di kolom JSON: attributes_json
+   - contoh key: diameter_mm, diameter_inch, od_mm, spec, class, model, outlet, power_watt, cable_type, size_mm2, length_per_roll_m, pack_size_kg, dll.
+
+B3. 3 KOLOM CADANGAN (SESUI PERMINTAAN)
+1) attributes_json  : atribut teknis dinamis per kategori (dipakai sekarang).
+2) custom_fields_json: tempat data tambahan di masa depan (barcode tambahan, lokasi rak, min_stock, foto_url, supplier_sku, dll).
+3) raw_source_json  : simpan jejak baris sumber import (sheet_name, row_number, nilai kolom original) untuk audit & re-import.
+
+B4. DATA MODEL (TABEL MINIMAL)
+Catatan: desain ini sengaja minimal agar tidak over-engineered, namun tetap rapi dan siap berkembang.
+
+1) brands
+   - id, name, is_active
+2) categories
+   - id, parent_id (nullable), name, code (opsional), is_active
+3) uoms
+   - id, code (PCS, BATANG, BOX, ROLL, METER, KG, PACK, LEMBAR, SET), name
+   - [Implementasi: 9 UoM di UomSeeder]
+4) items (SKU master)
+   - id
+   - sku_code (unique)
+   - name
+   - brand_id (FK brands)
+   - category_id (FK categories)
+   - base_uom_id (FK uoms)
+   - pack_qty (decimal; default 1)
+   - purchase_uom_id (nullable; FK uoms)  [opsional tapi berguna untuk box/roll]
+   - tax_included (boolean; default true jika sumber harga sudah PPN)
+   - is_active (boolean)
+   - attributes_json (json)
+   - custom_fields_json (json)
+   - raw_source_json (json)
+   - created_at, updated_at
+5) item_barcodes (opsional; jika 1 SKU bisa punya beberapa barcode)
+   - id, item_id, barcode, is_primary
+6) [TIDAK DIBUAT — tabel terpisah item_audit_logs tidak diimplementasikan]
+   Audit trail item menggunakan tabel audit_logs yang sama (shared) via Auditable trait.
+   auditable_type = 'App\Models\Item', auditable_id = item.id
+   Tabel audit_logs bersifat append-only (diproteksi AuditLog::boot() via LogicException).
+
+B5. PRICING (DIPISAHKAN DARI MASTER PRODUK, TAPI DIIMPORT UNTUK HARGA AWAL)
+Rationale: Excel adalah price list; namun arsitektur sistem memisahkan Master Data vs Pricing Management.
+MVP pricing minimal:
+- price_lists: id, name, scope (GLOBAL/BRANCH), branch_id (nullable), effective_from, effective_to (nullable)
+- price_list_items: price_list_id, item_id, sell_price, price_uom_id, notes_json (diskon breakdown)
+
+Untuk kasus HCL (TEMPO vs TUNAI) & POWER PRALON (NETT 7.5% vs 18%):
+- buat 2 price list berbeda, mis:
+  * 'HCL_TUNAI' dan 'HCL_TEMPO'
+  * 'POWER_PRALON_NETT_7_5' dan 'POWER_PRALON_NETT_18'
+- Aturan pemakaian price list bisa ditentukan pada modul POS / Customer group nanti.
+
+B6. ATTRIBUTE SCHEMA (AGAR DINAMIS TAPI TERKONTROL)
+Tujuan: attributes_json tidak liar; UI bisa generate form otomatis berdasarkan kategori.
+
+Tabel SUDAH DIBUAT (bukan opsional lagi):
+- attribute_definitions: key, label, data_type(number/text/select/boolean), unit, options_json, is_required
+- category_attribute_sets: category_id, attribute_definition_id (pivot)
+
+Attribute definitions YANG TELAH DIIMPLEMENTASIKAN (19 keys di AttributeDefinitionSeeder):
+- diameter_mm      (number, unit=mm)       ← Pipa PVC
+- diameter_inch    (text,   unit=inch)      ← Pipa PVC
+- od_mm            (number, unit=mm)        ← Pipa PVC
+- panjang_m        (number, unit=m)         ← pipa 4m/batang
+- spec             (text)                   ← AW/D/dll
+- model            (text)                   ← POLOS/MOF/dll
+- jenis            (text)                   ← Fitting PVC / Milliard
+- class            (text)                   ← TS/dll
+- isi_per_box      (number, unit=pcs)       ← Fitting PVC (ISI/BOX)
+- outlet           (text)                   ← Pompa HCL (0.75")
+- power_watt       (number, unit=W)         ← Pompa HCL
+- type_text        (text)                   ← Pompa HCL (Type)
+- cable_size       (text)                   ← EXTRANA (2x1,5)
+- cable_size_unit  (text)                   ← EXTRANA (mm2)
+- cable_type       (select, 20 options)     ← EXTRANA (NYM/NYY/NYMHY/NYYHY/
+                                               NFYGbY/NYA/NYAF/NA2XSY/N2XSY/
+                                               N2XSEBY/NA2XSEBY/MVTIC/NA2XSEYBY/
+                                               NFA2X/AAAC/AAACS/NFA2X-T)
+- length_per_roll_m (number, unit=m)        ← MILLIARD (M/ROLL)
+- pack_size        (number)                 ← NO DROP (kemasan: 4)
+- pack_size_unit   (text)                   ← NO DROP (kemasan: Kg)
+- weight_kg        (number, unit=kg)        ← MU Mortar (20 KG/40 KG)
+
+Catatan: pack_qty_box dari rancangan awal TIDAK diimplementasikan terpisah.
+  Konversi box→pcs ditangani oleh kolom items.pack_qty (decimal) yang sudah ada.
+
+B7. STANDAR KATEGORI (YANG TELAH DIIMPLEMENTASIKAN)
+Kategori di CategorySeeder (7 kategori root, semua is_active=true):
+
+  Code          Name                         Brand Mapping (Excel)
+  ───────────   ──────────────────────────   ─────────────────────────────────
+  PIPA_PVC      Pipa PVC                     RUCIKA, MASPION, TRILLIUN, POWER PRALON
+  FITTING_PVC   Fitting PVC                  RUCIKA FITTING, FITTING MASPION
+  POMPA         Pompa Air                    HCL
+  KABEL         Kabel Listrik                EXTRANA
+  CHEM          Waterproofing / Chemical     NO DROP
+  MORTAR        Mortar / Material Bangunan   MU
+  LAINNYA       Lainnya                      MILLIARD (selang/pipa gulungan)
+
+Catatan: Kategori mendukung parent_id (sub-kategori) tapi seeder hanya buat root.
+Sub-kategori dapat ditambahkan via UI atau seeder berikutnya.
+
+==========================================================================================
+C. STRATEGI IMPORT & NORMALISASI DARI EXCEL
+==========================================================================================
+C1. TARGET HASIL IMPORT
+Output import harus menghasilkan:
+- Daftar SKU (items) lengkap, unik, siap dipakai POS/search/barcode (jika ada).
+- Pricing awal tersimpan di price list (price_list_items).
+- raw_source_json menyimpan jejak sumber per SKU/price item.
+
+C2. ATURAN UMUM NORMALISASI
+1) Trim & bersihkan string
+   - strip spasi depan/belakang (contoh 'SEAGULL ' -> 'SEAGULL').
+   - normalisasi huruf besar/kecil (gunakan Title Case atau Upper Case konsisten).
+2) Parse harga rupiah
+   - buang 'Rp', '.', ',', ',-', spasi -> angka integer.
+3) Diskon
+   - jika kolom DISC berupa 0.xx -> treat sebagai persen.
+   - jika DISC > 1 dan tipe nominal (contoh MU) -> treat sebagai potongan rupiah.
+4) Standarisasi inch
+   - simpan sebagai string canonical, contoh: '1/2', '3/4', '1', '1 1/4', '5/8"'.
+   - untuk SKU code, gunakan format tanpa spasi: '1-1_4' atau '1_1_4' (lihat aturan sku_code).
+5) Konversi kemasan
+   - ISI/BOX, Pack -> simpan pack_qty (qty base_uom per box).
+   - M/ROLL -> simpan length_per_roll_m (atribut).
+   - KEMASAN '4 Kg' -> pack_size=4, pack_size_unit='Kg'.
+6) Harga sudah PPN
+   - default tax_included=true untuk sheet yang mencantumkan 'sudah PPN'.
+
+C3. ATURAN PEMBUATAN SKU (SKU CODE & NAMA TAMPIL)
+Tujuan: SKU code harus stabil, unik, mudah dicari, dan tidak bergantung pada auto-increment.
+
+Format sku_code yang disarankan:
+  <BRAND_CODE>-<CAT_CODE>-<KEY_SPEC>
+Contoh aturan brand_code:
+  RUCIKA, TRILLIUN, MASPION, HCL, EXTRANA, MILLIARD, MU, NODROP, POWER
+Contoh aturan cat_code:
+  PIPA, FITTING, POMPA, KABEL, CHEM, MORTAR
+
+Contoh KEY_SPEC per kategori:
+- PIPA: <TYPE>-<MODEL>-<MM>MM-<INCH>-<LEN>M   (jika len diketahui)
+- FITTING: <JENIS>-<MM>MM-<INCH>-<CLASS>      (jika ada)
+- POMPA: <TYPE_TEXT>-<OUTLET>-<POWERW>
+- KABEL: <SIZE>-<CABLETYPE>                   (EXTRANA)
+- CHEM: <ITEM>-<PACKSIZE><UNIT>
+- MORTAR: <JENIS_TEXT>
+
+Nama tampil (items.name) disarankan human-readable:
+- PIPA PVC RUCIKA AW 25mm (1") 4m - POLOS/MOF (jika ada)
+- FITTING RUCIKA CLEAN OUT (AW) 50mm (2")
+- KABEL EXTRANA NYM 2x1,5 (mm2) - harga/meter
+- NO DROP WATERPROOFING READY MIX 4 Kg
+
+C4. MAPPING IMPORT PER SHEET
+1) RUCIKA
+   item attributes_json:
+     diameter_mm=mm, diameter_inch=inch, od_mm=OD(mm), spec=SPESIFIKASI, panjang_m=4 (karena '4 M / BATANG').
+   base_uom=BATANG (stok & jual per batang).
+   pricing:
+     gunakan HARGA(final) jika tersedia; simpan breakdown disc1-3 di notes_json.
+
+2) RUCIKA FITTING
+   base_uom=PCS (harga/pcs).
+   pack_qty=ISI/BOX (konversi box -> pcs).
+   attributes_json:
+     size_mm=MM, size_inch=inch, jenis=JENIS.
+   pricing:
+     parse HARGA/PCS (string rupiah) -> numeric.
+     jika disc1-3 ada, hitung final atau simpan disc breakdown; boleh juga hitung saat import.
+
+3) HCL
+   base_uom=PCS.
+   attributes_json:
+     outlet=Outlet, power_watt=Power (parse angka W), type_text=Type, jenis=Jenis.
+   pricing:
+     buat 2 price list: HCL_TEMPO dan HCL_TUNAI.
+     sell_price tempo = kolom TEMPO; sell_price tunai = kolom TUNAI.
+     simpan disc tempo/tunai di notes_json untuk audit.
+
+4) MASPION
+   base_uom=BATANG (asumsi pipa per batang).
+   attributes_json:
+     type=TYPE (AW), ukuran_inch=UKURAN.
+   pricing:
+     gunakan NETTO sebagai sell_price awal.
+
+5) FITTING MASPION
+   base_uom=PCS.
+   pack_qty=Pack (qty/box).
+   attributes_json:
+     jenis=Jenis, class=Class, ukuran_inch=Ukuran.
+   pricing:
+     gunakan kolom Harga sebagai sell_price awal.
+
+6) PIPA TRILLIUN
+   base_uom=BATANG.
+   attributes_json:
+     type=TYPE, ukuran_inch=UKURAN.
+   pricing:
+     gunakan HARGA(final).
+     simpan bruto, netto, disc1, disc2 di notes_json/raw_source_json.
+
+7) EXTRANA (PIVOT MATRIX)
+   base_uom=METER (harga/meter).
+   Untuk setiap baris ukuran, buat SKU per cable_type yang punya harga (kolom tipe kabel berisi angka).
+   attributes_json:
+     cable_size=Ukuran (contoh '2x1,5'), cable_size_unit=SATUAN (mm2), cable_type=<nama kolom>.
+   pricing:
+     sell_price = nilai sel per meter.
+   Catatan:
+     Jika beberapa tipe kabel pada ukuran tertentu kosong, SKU untuk tipe itu tidak dibuat (atau dibuat inactive).
+
+8) MILLIARD
+   base_uom=ROLL.
+   attributes_json:
+     diameter_inch=DIAMETER(INCH), length_per_roll_m=M/ROLL, jenis=JENIS, produk=PRODUK.
+   pricing:
+     gunakan HARGA(final) sebagai sell_price awal (per roll).
+     simpan disc1-3 di notes_json.
+
+9) MU (MORTAR UTAMA)
+   base_uom=PCS (per sak/pack, tergantung praktik toko; minimal treat sebagai pcs).
+   attributes_json:
+     merk=MERK, produk=PRODUK, jenis=JENIS (contoh MU 200 20 KG).
+     (opsional) weight_kg parse dari JENIS jika ada '20 KG/40 KG'.
+   pricing:
+     gunakan NETTO sebagai sell_price awal.
+     simpan DISC nominal di notes_json.
+
+10) NO DROP
+   base_uom=PCS (tiap kemasan dianggap 1 pcs).
+   attributes_json:
+     pack_size & unit parse dari KEMASAN, item_name=ITEM.
+   pricing:
+     gunakan NETTO sebagai sell_price awal.
+
+11) POWER PRALON
+   base_uom=BATANG.
+   attributes_json:
+     tipe=TIPE, model=MODEL, diameter_inch=Inch, diameter_mm=mm.
+   pricing:
+     buat 2 price list: POWER_PRALON_NETT_7_5 dan POWER_PRALON_NETT_18.
+     sell_price dari NETT 7,5% dan NETT 18% masing-masing.
+
+C5. VALIDASI SAAT IMPORT (HARUS ADA)
+- sku_code unik; jika bentrok, tambahkan suffix stabil (mis. -V2) dan catat di log.
+- name tidak boleh kosong.
+- base_uom wajib valid.
+- price >= 0; jika kosong/null -> tandai 'price_missing'.
+- pack_qty >= 1; jika kosong -> default 1.
+- Untuk EXTRANA: hanya buat SKU jika price cell numeric dan > 0.
+
+==========================================================================================
+D. UI (MVP) UNTUK MANAGEMENT PRODUCT — STATUS IMPLEMENTASI
+==========================================================================================
+D1. PRODUCT LIST [IMPLEMENTASI: admin/items/index]
+- Kolom: sku_code, name, brand, category, base_uom, status (Aktif/Nonaktif).
+- Filter YANG ADA: brand_id, category_id, active (1/0), keyword (q) → search name & sku_code.
+- Filter BELUM ADA: "ada harga/tidak" (price filter belum diimplementasikan di MVP).
+- Action: Detail (show), Edit, Nonaktifkan.
+- Fitur "manage barcodes" belum diimplementasikan (barcodes hanya tersimpan di DB via import).
+
+D2. PRODUCT FORM [IMPLEMENTASI: admin/items/create & edit]
+Section 1: Identitas
+- sku_code (wajib unik), name, brand (dropdown), category (dropdown), active.
+
+Section 2: Unit & Kemasan
+- base_uom (wajib, dropdown UoM), purchase_uom (opsional), pack_qty.
+
+Section 3: Atribut Teknis (JSON textarea)
+- IMPLEMENTASI SAAT INI: textarea JSON (bukan form dinamis per kategori).
+- Form otomatis berbasis category_attribute_sets BELUM diimplementasikan di MVP.
+- attributes_json diisi manual (JSON valid) atau via import.
+
+Section 4: Pajak & Cadangan
+- tax_included (checkbox, default true).
+- custom_fields_json (textarea JSON, opsional).
+
+D3. IMPORT EXCEL [IMPLEMENTASI: admin/items/import]
+- Form upload file .xlsx (max 20 MB).
+- TIDAK ada preview/wizard: langsung proses semua sheet → hasilkan SKU + price.
+- Tampilkan hasil: created/skipped/failed + daftar error.
+- Library: shuchkin/simplexlsx (pure PHP, ext-zip TIDAK diperlukan).
+  (PHP 8.4.12 di server ini tidak memiliki ext-zip)
+- Juga tersedia sebagai Artisan command: php artisan products:import {path?}
+
+D4. PRODUCT DETAIL [IMPLEMENTASI: admin/items/show]
+- Tampilkan detail lengkap item (brand, category, UoM, attributes_json, custom_fields_json).
+- Audit log panel di sidebar: siapa mengubah apa, kapan, old_values, new_values.
+- Price list yang terkait (via PriceListItem).
+
+D5. AUDIT LOG VIEW [IMPLEMENTASI: admin/audit-logs]
+- Shared dengan seluruh sistem (bukan khusus produk).
+- Filter: auditable_type, user_id, action, date_from, date_to.
+- Paginasi 50 record per halaman.
+
+==========================================================================================
+E. KETERKAITAN DENGAN MODUL LAIN (AGAR KONSISTEN)
+==========================================================================================
+1) POS
+- POS mencari barang via barcode atau search name/sku_code.
+- Saat transaksi disimpan, sistem menyimpan snapshot harga_jual per item (sesuai kebijakan arsitektur).
+
+2) Inventory
+- Stok dicatat pada level SKU per cabang/gudang.
+- Perubahan master produk tidak mengubah histori stok & transaksi; hanya mempengaruhi transaksi berikutnya.
+
+3) Delivery Order (DO)
+- DO mereferensikan SKU dan qty.
+- Setelah DO dibuat, item & qty tidak boleh diubah tanpa mekanisme void/regenerate (kebijakan penguncian).
+
+4) Purchasing & AP
+- PO/GRN memakai SKU; receiving dapat input dalam unit purchase (BOX/ROLL) lalu konversi ke base_uom via pack_qty/atribut.
+- Harga beli dapat menggunakan supplier price list (bisa dimulai dari Excel lalu disesuaikan).
+
+==========================================================================================
+F. KEPUTUSAN PRAKTIS (AGAR SESUAI KONDISI: DATA HANYA EXCEL)
+==========================================================================================
+Keputusan yang disarankan untuk mempercepat implementasi:
+1) Anggap price list di Excel sebagai 'Harga Jual Awal' (bukan HPP). HPP dihitung dari Purchasing di tahap berikutnya.
+2) tax_included=true untuk semua sheet yang mencantumkan 'sudah PPN/PPN 11%'.
+3) Barcode: optional; jika tidak tersedia sekarang, POS wajib bisa search dengan keyword + kategori/brand.
+4) Multi cabang: katalog SKU global. Harga global dulu; override per cabang menyusul jika diperlukan.
+5) Hindari kolom extra1/extra2/extra3 yang tidak jelas; gunakan 3 JSON column yang terstruktur (attributes_json, custom_fields_json, raw_source_json).
+
+==========================================================================================
+G. ACCEPTANCE CRITERIA (DEFINITION OF DONE) — STATUS SAAT INI
+==========================================================================================
+Master Data Produk dinyatakan siap dipakai jika:
+
+  KRITERIA                                                STATUS
+  ──────────────────────────────────────────────────────  ───────────────────────────────
+  Semua SKU dari 11 sheet dapat diimport via service      ✅ ExcelImportService selesai
+    tanpa kehilangan info utama (ukuran, kemasan, tipe)
+  EXTRANA sudah diubah jadi SKU per tipe kabel (pivot)   ✅ Implementasi lengkap
+  HCL dan POWER PRALON: 2 price tier → 2 PriceList       ✅ HCL_TEMPO/HCL_TUNAI,
+                                                              POWER_PRALON_NETT_7_5/18
+  Import Excel tersedia via UI (form upload)              ✅ admin/items/import
+  Import Excel tersedia via Artisan command               ✅ products:import {path?}
+  Perubahan master produk tercatat di audit log           ✅ Auditable trait aktif
+  SKU unik (dedup dengan suffix -V2)                      ✅ ExcelImportService
+  raw_source_json tersimpan per SKU (audit trail import)  ✅ Disimpan otomatis saat import
+  CRUD + deactivate tersedia untuk item/brand/cat/uom     ✅ Controllers + Policies
+  RBAC terintegrasi (38 permission)                       ✅ Item/Brand/Cat/Uom policies
+  Test suite passing                                      ✅ 55/55
+
+  BELUM DIIMPLEMENTASIKAN (deferred ke modul selanjutnya):
+  - POS search items (via Module 05)
+  - Filter "ada harga/tidak" di list item
+  - Form dinamis atribut per kategori (category_attribute_sets UI)
+  - Manage barcodes via UI
+  - Branches table (FK dari branch_id di users)
+
+LAMPIRAN: CONTOH BENTUK attributes_json (SINGKAT)
+- Pipa: {"diameter_mm":25,"diameter_inch":"1\"","od_mm":32,"spec":"AW","panjang_m":4,"model":"POLOS"}
+- Fitting: {"size_mm":50,"size_inch":"2\"","jenis":"CLEAN OUT (AW)","isi_per_box":36}
+- Kabel: {"cable_size":"2x1,5","cable_size_unit":"mm2","cable_type":"NYM"}
+- Pompa: {"outlet":"0.75\"","power_watt":180,"type_text":"2\" SDM 1/26 - 0.25HP"}
+- Chemical: {"item":"NO DROP WATERPROOFING (READY MIX)","pack_size":4,"pack_size_unit":"Kg"}
