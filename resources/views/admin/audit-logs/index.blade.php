@@ -9,18 +9,15 @@
 <p class="mb-6 text-sm text-gray-500">Riwayat seluruh aktivitas sensitif yang tercatat di sistem</p>
 
 {{-- ── Filter card ──────────────────────────────────────────────────────── --}}
-<div class="mb-5 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80">
-    <div class="border-b border-gray-100 px-5 py-3.5">
-        <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Filter Log</p>
-    </div>
+<div class="mb-5 rounded-2xl bg-white p-4 shadow-xl shadow-indigo-500/10 border border-slate-300">
     <form method="GET" action="{{ route('admin.audit-logs.index') }}"
-          class="flex flex-wrap items-end gap-4 px-5 py-4">
+          class="flex flex-wrap items-end gap-3">
 
         {{-- Aksi --}}
         <div class="min-w-[140px]">
             <label for="action" class="mb-1.5 block text-xs font-medium text-gray-600">Aksi</label>
             <select id="action" name="action"
-                    class="block w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900
+                    class="tom-select-init block w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900
                            focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20">
                 <option value="">Semua aksi</option>
                 @foreach (\App\Enums\AuditActionEnum::cases() as $act)
@@ -34,11 +31,28 @@
         {{-- Tipe Objek --}}
         <div class="min-w-[200px]">
             <label for="auditable_type" class="mb-1.5 block text-xs font-medium text-gray-600">Tipe Objek</label>
-            <input type="text" id="auditable_type" name="auditable_type"
-                   value="{{ request('auditable_type') }}"
-                   placeholder="cth: App\Models\User"
-                   class="block w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900
-                          placeholder-gray-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20">
+            <select id="auditable_type" name="auditable_type"
+                    class="tom-select-init block w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900
+                           focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20">
+                <option value="">Semua objek</option>
+                @php
+                    $typeLabels = [
+                        'App\Models\User' => 'Pengguna',
+                        'App\Models\Role' => 'Role (Hak Akses)',
+                        'App\Models\Item' => 'Produk',
+                        'App\Models\Category' => 'Kategori',
+                        'App\Models\Brand' => 'Brand',
+                        'App\Models\Uom' => 'Satuan (UOM)',
+                    ];
+                @endphp
+                @if(isset($auditableTypes))
+                    @foreach ($auditableTypes as $type)
+                        <option value="{{ $type }}" {{ request('auditable_type') === $type ? 'selected' : '' }}>
+                            {{ $typeLabels[$type] ?? class_basename($type) }}
+                        </option>
+                    @endforeach
+                @endif
+            </select>
         </div>
 
         {{-- Dari Tanggal --}}
@@ -83,17 +97,17 @@
 </div>
 
 {{-- ── Table card ───────────────────────────────────────────────────────── --}}
-<div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80">
+<div class="overflow-hidden rounded-2xl bg-white shadow-xl shadow-indigo-500/10 border border-slate-300">
     <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-100 text-sm">
             <thead>
                 <tr class="bg-gray-50/80">
-                    <th class="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Waktu</th>
-                    <th class="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Pengguna</th>
-                    <th class="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Aksi</th>
-                    <th class="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Objek</th>
-                    <th class="hidden px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 md:table-cell">IP</th>
-                    <th class="px-5 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-400">Detail</th>
+                    <th class="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Waktu</th>
+                    <th class="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Pengguna</th>
+                    <th class="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Aksi</th>
+                    <th class="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Objek</th>
+                    <th class="hidden px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-600 md:table-cell">IP</th>
+                    <th class="px-5 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-600">Detail</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100" id="audit-tbody">
@@ -102,7 +116,7 @@
                     <tr class="transition hover:bg-gray-50/60" data-log-id="{{ $log->id }}">
                         <td class="whitespace-nowrap px-5 py-4">
                             <p class="font-medium text-gray-800">{{ $log->created_at->format('d M Y') }}</p>
-                            <p class="text-xs text-gray-400">{{ $log->created_at->format('H:i:s') }}</p>
+                            <p class="text-xs text-gray-500">{{ $log->created_at->format('H:i:s') }}</p>
                         </td>
                         <td class="px-5 py-4">
                             @if ($log->user)
@@ -113,7 +127,7 @@
                                     <span class="text-gray-700">{{ $log->user->name }}</span>
                                 </div>
                             @else
-                                <span class="text-gray-400">System</span>
+                                <span class="text-gray-500">System</span>
                             @endif
                         </td>
                         <td class="px-5 py-4">
@@ -136,12 +150,12 @@
                         <td class="px-5 py-4">
                             @if ($log->auditable_type)
                                 <span class="font-medium text-gray-700">{{ class_basename($log->auditable_type) }}</span>
-                                <span class="ml-1 text-xs text-gray-400">#{{ $log->auditable_id }}</span>
+                                <span class="ml-1 text-xs text-gray-500">#{{ $log->auditable_id }}</span>
                             @else
-                                <span class="text-gray-400">—</span>
+                                <span class="text-gray-500">—</span>
                             @endif
                         </td>
-                        <td class="hidden px-5 py-4 text-xs text-gray-400 md:table-cell">
+                        <td class="hidden px-5 py-4 text-xs text-gray-600 md:table-cell">
                             {{ $log->ip_address ?? '—' }}
                         </td>
                         <td class="px-5 py-4 text-center">
@@ -171,14 +185,14 @@
                                         <span class="inline-block h-2 w-2 rounded-full bg-red-400"></span>
                                         Sebelum
                                     </p>
-                                    <pre id="old-{{ $log->id }}" class="overflow-x-auto rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-700 leading-relaxed"></pre>
+                                    <div id="old-{{ $log->id }}" class="overflow-x-auto rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-700"></div>
                                 </div>
                                 <div>
                                     <p class="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-gray-500">
                                         <span class="inline-block h-2 w-2 rounded-full bg-green-400"></span>
                                         Sesudah
                                     </p>
-                                    <pre id="new-{{ $log->id }}" class="overflow-x-auto rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-700 leading-relaxed"></pre>
+                                    <div id="new-{{ $log->id }}" class="overflow-x-auto rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-700"></div>
                                 </div>
                             </div>
                         </td>
@@ -189,9 +203,9 @@
                             <svg class="mx-auto mb-3 h-10 w-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                             </svg>
-                            <p class="text-sm font-medium text-gray-400">Belum ada audit log ditemukan</p>
+                            <p class="text-sm font-medium text-gray-600">Belum ada audit log ditemukan</p>
                             @if(request()->hasAny(['action', 'auditable_type', 'date_from', 'date_to']))
-                                <p class="mt-1 text-xs text-gray-400">Coba ubah filter pencarian</p>
+                                <p class="mt-1 text-xs text-gray-500">Coba ubah filter pencarian</p>
                             @endif
                         </td>
                     </tr>
@@ -209,6 +223,54 @@
 </div>
 
 <script>
+function renderPrettyJson(data) {
+    if (!data || Object.keys(data).length === 0) return '<span class="text-gray-400 italic text-xs">(kosong)</span>';
+    
+    function buildNode(val) {
+        if (val === null) return '<span class="text-gray-400 italic">null</span>';
+        if (typeof val === 'boolean') return val ? '<span class="text-green-600 font-medium">Ya</span>' : '<span class="text-red-500 font-medium">Tidak</span>';
+        
+        // Cek jika val adalah string JSON tersembunyi (seperti di attributes_json)
+        if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
+            try {
+                let parsed = JSON.parse(val);
+                if (typeof parsed === 'object' && parsed !== null) {
+                    val = parsed;
+                }
+            } catch (e) {
+                // Biarkan sebagai string jika parse gagal
+            }
+        }
+
+        if (typeof val !== 'object') return `<span class="text-gray-900 break-words">${val}</span>`;
+        
+        let nodeHtml = '<ul class="space-y-1 mt-1 pl-3 border-l-2 border-gray-100">';
+        if (Array.isArray(val)) {
+            val.forEach(item => {
+                nodeHtml += `<li class="relative before:absolute before:-left-3 before:top-2 before:h-px before:w-2 before:bg-gray-200 break-words">${buildNode(item)}</li>`;
+            });
+        } else {
+            for (const [k, v] of Object.entries(val)) {
+                let dispKey = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                nodeHtml += `<li class="grid grid-cols-1 md:grid-cols-3 gap-1 md:gap-2 py-0.5"><span class="font-medium text-gray-600 col-span-1">${dispKey}</span><span class="col-span-1 md:col-span-2">${buildNode(v)}</span></li>`;
+            }
+        }
+        nodeHtml += '</ul>';
+        return nodeHtml;
+    }
+
+    let html = '<ul class="space-y-1 text-xs">';
+    for (const [key, value] of Object.entries(data)) {
+        let displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        html += `<li class="grid grid-cols-3 gap-2 py-1.5 border-b border-gray-100 last:border-0">
+                    <span class="font-medium text-gray-500 col-span-1">${displayKey}</span>
+                    <span class="text-gray-900 col-span-2">${buildNode(value)}</span>
+                 </li>`;
+    }
+    html += '</ul>';
+    return html;
+}
+
 function toggleDetail(id, btn) {
     const row     = document.getElementById('detail-' + id);
     const oldPre  = document.getElementById('old-' + id);
@@ -218,8 +280,8 @@ function toggleDetail(id, btn) {
     const isHidden = row.classList.contains('hidden');
 
     if (isHidden) {
-        oldPre.textContent = oldData ? JSON.stringify(oldData, null, 2) : '(kosong)';
-        newPre.textContent = newData ? JSON.stringify(newData, null, 2) : '(kosong)';
+        oldPre.innerHTML = renderPrettyJson(oldData);
+        newPre.innerHTML = renderPrettyJson(newData);
         row.classList.remove('hidden');
         btn.innerHTML = `<svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg> Tutup`;
         btn.classList.add('border-blue-300', 'text-blue-600');

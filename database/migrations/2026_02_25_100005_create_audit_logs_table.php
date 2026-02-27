@@ -4,23 +4,14 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     public function up(): void
     {
         Schema::create('audit_logs', function (Blueprint $table) {
             $table->id();
             // NULL untuk aksi sistem (cron, seeder)
             $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
-            $table->enum('action', [
-                'create',
-                'update',
-                'delete',
-                'status_change',
-                'void',
-                'login',
-                'logout',
-            ]);
+            $table->string('action', 50);
             // Nama model, contoh: 'User', 'Transaction', 'DeliveryOrder'
             $table->string('auditable_type', 100);
             $table->unsignedBigInteger('auditable_id');

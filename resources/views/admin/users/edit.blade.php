@@ -17,7 +17,7 @@
 </div>
 
 {{-- ── Form card ────────────────────────────────────────────────────────── --}}
-<div class="max-w-2xl overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80">
+<div class="max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl shadow-indigo-500/10 border border-slate-300">
 
     {{-- Card header with user avatar --}}
     <div class="border-b border-gray-100 px-6 py-4">
@@ -38,7 +38,7 @@
 
         {{-- Section: Identitas ────────────────────────────────────────── --}}
         <div class="px-6 py-5 space-y-4">
-            <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Identitas</p>
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-600">Identitas</p>
 
             {{-- Nama --}}
             <div>
@@ -61,7 +61,7 @@
             <div>
                 <label for="username" class="mb-1.5 block text-sm font-medium text-gray-700">Username</label>
                 <div class="relative">
-                    <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-gray-400 text-sm">@</span>
+                    <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-gray-500 text-sm">@</span>
                     <input type="text" id="username" name="username" value="{{ old('username', $user->username) }}" required
                            pattern="^[a-z0-9_]+" minlength="3" maxlength="50"
                            class="block w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-8 pr-4 text-sm text-gray-900
@@ -79,8 +79,8 @@
 
             {{-- Email --}}
             <div>
-                <label for="email" class="mb-1.5 block text-sm font-medium text-gray-700">Email</label>
-                <input type="email" id="email" name="email" value="{{ old('email', $user->email) }}" required
+                <label for="email" class="mb-1.5 block text-sm font-medium text-gray-700">Email <span class="text-xs font-normal text-gray-500">(opsional)</span></label>
+                <input type="email" id="email" name="email" value="{{ old('email', $user->email) }}"
                        class="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900
                               transition placeholder-gray-400
                               focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20
@@ -98,8 +98,8 @@
         {{-- Section: Ganti Password ───────────────────────────────────── --}}
         <div class="px-6 py-5 space-y-4">
             <div class="flex items-center justify-between">
-                <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Ganti Password</p>
-                <span class="text-xs text-gray-400">Kosongkan jika tidak ingin mengubah</span>
+                <p class="text-xs font-semibold uppercase tracking-wider text-gray-600">Ganti Password</p>
+                <span class="text-xs text-gray-500">Kosongkan jika tidak ingin mengubah</span>
             </div>
 
             {{-- Password baru --}}
@@ -113,7 +113,7 @@
                                   @error('password') border-red-400 bg-red-50 @enderror"
                            placeholder="Min. 8 karakter (huruf + angka)">
                     <button type="button" onclick="togglePwd('password', 'eye-edit')"
-                            class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition hover:text-gray-600">
+                            class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-500 transition hover:text-gray-700">
                         <svg id="eye-edit" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                             <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
@@ -141,14 +141,14 @@
 
         {{-- Section: Role & Akses ─────────────────────────────────────── --}}
         <div class="px-6 py-5 space-y-4">
-            <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Role & Akses</p>
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-600">Role & Akses</p>
 
             {{-- Role --}}
             <div>
                 <label for="role_id" class="mb-1.5 block text-sm font-medium text-gray-700">Role</label>
                 <select id="role_id" name="role_id" required
                         onchange="toggleBranchField(this)"
-                        class="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900
+                        class="tom-select-init block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900
                                transition
                                focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20
                                @error('role_id') border-red-400 bg-red-50 @enderror">

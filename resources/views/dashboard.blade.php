@@ -20,10 +20,10 @@
 <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
     @can('viewAny', \App\Models\User::class)
-    <div class="relative overflow-hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-200/80">
+    <div class="relative overflow-hidden rounded-2xl bg-white p-5 shadow-xl shadow-indigo-500/10 border border-slate-300">
         <div class="flex items-start justify-between">
             <div>
-                <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Total Pengguna</p>
+                <p class="text-xs font-semibold uppercase tracking-wider text-gray-600">Total Pengguna</p>
                 <p class="mt-2 text-3xl font-bold text-gray-900">{{ $stats['total_users'] }}</p>
                 <p class="mt-1.5 text-xs text-gray-500">
                     <span class="font-semibold text-green-600">{{ $stats['active_users'] }} aktif</span>
@@ -43,10 +43,10 @@
     @endcan
 
     @if(auth()->user()->hasPermission('audit_logs.view'))
-    <div class="relative overflow-hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-200/80">
+    <div class="relative overflow-hidden rounded-2xl bg-white p-5 shadow-xl shadow-indigo-500/10 border border-slate-300">
         <div class="flex items-start justify-between">
             <div>
-                <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Aktivitas Hari Ini</p>
+                <p class="text-xs font-semibold uppercase tracking-wider text-gray-600">Aktivitas Hari Ini</p>
                 <p class="mt-2 text-3xl font-bold text-gray-900">{{ $stats['audit_today'] }}</p>
                 <p class="mt-1.5 text-xs text-gray-500">Entri audit log tercatat</p>
             </div>
@@ -61,11 +61,11 @@
     </div>
     @endif
 
-    <div class="relative overflow-hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-200/80">
+    <div class="relative overflow-hidden rounded-2xl bg-white p-5 shadow-xl shadow-indigo-500/10 border border-slate-300">
         <div class="flex items-start justify-between">
             <div>
-                <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Modul Aktif</p>
-                <p class="mt-2 text-3xl font-bold text-gray-900">1 <span class="text-base font-medium text-gray-400">/ 10</span></p>
+                <p class="text-xs font-semibold uppercase tracking-wider text-gray-600">Modul Aktif</p>
+                <p class="mt-2 text-3xl font-bold text-gray-900">1 <span class="text-base font-medium text-gray-500">/ 10</span></p>
                 <p class="mt-1.5 text-xs text-gray-500">User &amp; Access Control</p>
             </div>
             <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-green-50">
@@ -88,7 +88,7 @@
 
         @can('viewAny', \App\Models\User::class)
         <a href="{{ route('admin.users.index') }}"
-           class="group flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md">
+           class="group flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-500/10">
             <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 transition group-hover:bg-blue-100">
                 <svg class="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
                     <path stroke-linecap="round" stroke-linejoin="round"
@@ -108,7 +108,7 @@
 
         @if(auth()->user()->hasPermission('audit_logs.view'))
         <a href="{{ route('admin.audit-logs.index') }}"
-           class="group flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:border-purple-200 hover:shadow-md">
+           class="group flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-purple-300 hover:shadow-lg hover:shadow-purple-500/10">
             <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-purple-50 transition group-hover:bg-purple-100">
                 <svg class="h-5 w-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
                     <path stroke-linecap="round" stroke-linejoin="round"
@@ -146,8 +146,8 @@
         ] as $m)
         <div class="flex items-center gap-3 rounded-xl border border-dashed border-gray-200 bg-white/50 px-4 py-3">
             <span class="flex-shrink-0 text-xs font-bold tabular-nums text-gray-300">{{ $m['module'] }}</span>
-            <p class="truncate text-sm font-medium text-gray-400">{{ $m['label'] }}</p>
-            <span class="ml-auto flex-shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">Soon</span>
+            <p class="truncate text-sm font-medium text-gray-500">{{ $m['label'] }}</p>
+            <span class="ml-auto flex-shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">Soon</span>
         </div>
         @endforeach
     </div>

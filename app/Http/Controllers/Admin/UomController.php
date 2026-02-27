@@ -16,7 +16,7 @@ class UomController extends Controller
     {
         Gate::authorize('viewAny', Uom::class);
 
-        $uoms = Uom::orderBy('code')->paginate(30);
+        $uoms = Uom::orderBy('code')->paginate(10);
 
         return view('admin.uoms.index', compact('uoms'));
     }
@@ -65,5 +65,15 @@ class UomController extends Controller
 
         return redirect()->route('admin.uoms.index')
             ->with('success', 'Satuan berhasil diperbarui.');
+    }
+
+    public function deactivate(Uom $uom): RedirectResponse
+    {
+        Gate::authorize('deactivate', $uom);
+
+        $uom->update(['is_active' => false]);
+
+        return redirect()->route('admin.uoms.index')
+            ->with('success', 'Satuan berhasil dinonaktifkan.');
     }
 }

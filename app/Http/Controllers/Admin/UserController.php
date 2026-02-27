@@ -8,20 +8,33 @@ use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
 
 class UserController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
         Gate::authorize('viewAny', User::class);
 
-        $users = User::with('role')
-            ->orderBy('name')
-            ->paginate(20);
+        $query = User::with('role')->orderBy('name');
 
-        return view('admin.users.index', compact('users'));
+        if ($request->filled('q')) {
+            $q = $request->input('q');
+            $query->where(fn($w) => $w->where('name', 'like', "%{$q}%")->orWhere('username', 'like', "%{$q}%"));
+        }
+        if ($request->filled('role_id')) {
+            $query->where('role_id', $request->input('role_id'));
+        }
+        if ($request->filled('active')) {
+            $query->where('is_active', $request->input('active'));
+        }
+
+        $users = $query->paginate(10)->withQueryString();
+        $roles = \App\Models\Role::orderBy('name')->get();
+
+        return view('admin.users.index', compact('users', 'roles'));
     }
 
     public function create(): View

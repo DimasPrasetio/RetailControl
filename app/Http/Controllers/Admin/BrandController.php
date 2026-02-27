@@ -15,7 +15,7 @@ class BrandController extends Controller
     {
         Gate::authorize('viewAny', Brand::class);
 
-        $brands = Brand::orderBy('name')->paginate(30);
+        $brands = Brand::orderBy('name')->paginate(10);
 
         return view('admin.brands.index', compact('brands'));
     }
@@ -32,7 +32,7 @@ class BrandController extends Controller
         Gate::authorize('create', Brand::class);
 
         $data = $request->validate([
-            'name'      => ['required', 'string', 'max:100', 'unique:brands,name'],
+            'name' => ['required', 'string', 'max:100', 'unique:brands,name'],
             'is_active' => ['boolean'],
         ]);
 
@@ -54,8 +54,12 @@ class BrandController extends Controller
         Gate::authorize('update', $brand);
 
         $data = $request->validate([
-            'name'      => ['required', 'string', 'max:100',
-                            \Illuminate\Validation\Rule::unique('brands', 'name')->ignore($brand->id)],
+            'name' => [
+                'required',
+                'string',
+                'max:100',
+                \Illuminate\Validation\Rule::unique('brands', 'name')->ignore($brand->id)
+            ],
             'is_active' => ['boolean'],
         ]);
 

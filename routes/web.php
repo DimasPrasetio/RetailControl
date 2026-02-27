@@ -13,19 +13,19 @@ use Illuminate\Support\Facades\Route;
 // ─── Guest routes ─────────────────────────────────────────────────────────────
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'show'])->name('login');
-    Route::post('/login', [LoginController::class, 'store'])->name('login.store');
+    Route::post('/login', [LoginController::class, 'store'])->name('login.store')->middleware('throttle:5,1');
 });
 
 // ─── Authenticated routes ──────────────────────────────────────────────────────
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'auth.session', 'active'])->group(function () {
 
     Route::post('/logout', [LogoutController::class, 'destroy'])->name('logout');
 
     Route::get('/dashboard', function () {
         $stats = [
-            'total_users'  => \App\Models\User::count(),
+            'total_users' => \App\Models\User::count(),
             'active_users' => \App\Models\User::where('is_active', true)->count(),
-            'audit_today'  => \App\Models\AuditLog::whereDate('created_at', today())->count(),
+            'audit_today' => \App\Models\AuditLog::whereDate('created_at', today())->count(),
         ];
         return view('dashboard', compact('stats'));
     })->name('dashboard');
@@ -55,6 +55,8 @@ Route::middleware(['auth', 'active'])->group(function () {
 
         // ─── Master Data: UoM ─────────────────────────────────────────────
         Route::resource('uoms', UomController::class)->except(['show', 'destroy']);
+        Route::patch('uoms/{uom}/deactivate', [UomController::class, 'deactivate'])
+            ->name('uoms.deactivate');
 
         // ─── Master Data: Items (SKU) ──────────────────────────────────────
         Route::get('items/import', [ItemController::class, 'importForm'])->name('items.import-form');

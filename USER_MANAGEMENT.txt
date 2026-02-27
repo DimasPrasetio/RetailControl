@@ -6,7 +6,7 @@ Dokumen ini menjelaskan secara detail arsitektur, komponen, database schema,
 flow end-to-end, dan mekanisme keamanan yang terkait dengan Authentication
 dan User Management pada project RetailControl.
 
-Terakhir diperbarui : 2026-02-27 (sinkronisasi Module 01 + 02)
+Terakhir diperbarui : 2026-02-27 (sinkronisasi Module 01 + 02 + perbaikan minimal)
 
 ================================================================================
  1. GAMBARAN UMUM (OVERVIEW)
@@ -16,7 +16,7 @@ RetailControl adalah sistem POS (Point of Sale) berbasis Laravel yang dirancang
 untuk mengelola operasional retail multi-cabang. Sistem ini menggunakan:
 
   - Framework        : Laravel 10.x
-  - Auth Guard       : Session-based (web guard)
+  - Auth Guard       : Session-based (web guard) dengan Session Storage: Database (tabel sessions)
   - API Auth         : Laravel Sanctum (tersedia, belum digunakan aktif)
   - Hashing          : Bcrypt (via Laravel's 'hashed' cast)
   - RBAC             : Role-Based Access Control custom (bukan package pihak ke-3)
@@ -29,110 +29,112 @@ untuk mengelola operasional retail multi-cabang. Sistem ini menggunakan:
 ================================================================================
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 2.1 TABEL: users                                                           │
+│ 2.1 TABEL: users                                                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  Kolom            Tipe              Keterangan                              │
-│  ───────────────  ────────────────  ──────────────────────────────────────── │
-│  id               BIGINT (PK)      Auto-increment primary key              │
-│  name             VARCHAR(100)     Nama lengkap user                       │
-│  username         VARCHAR(50)      Login identifier (unique, lowercase)    │
-│  email            VARCHAR(150)     Email user (unique, nullable)           │
-│  password         VARCHAR(255)     Hashed password (Bcrypt)                │
-│  role_id          BIGINT (FK)      → roles.id (RESTRICT ON DELETE)         │
-│  branch_id        BIGINT (FK,NULL) → branches.id (akan di-FK Module 02)   │
-│  is_active        BOOLEAN          Status aktif/nonaktif (default: true)   │
-│  remember_token   VARCHAR(100)     Token untuk fitur "Remember Me"         │
-│  created_at       TIMESTAMP        Waktu pembuatan                         │
-│  updated_at       TIMESTAMP        Waktu terakhir diperbarui               │
-│  deleted_at       TIMESTAMP (NULL) Soft delete timestamp                   │
+│  ───────────────  ────────────────  ────────────────────────────────────────│
+│  id               BIGINT (PK)      Auto-increment primary key               │
+│  name             VARCHAR(100)     Nama lengkap user                        │
+│  username         VARCHAR(50)      Login identifier (unique, lowercase)     │
+│  email            VARCHAR(150)     Email user (unique, nullable)            │
+│  password         VARCHAR(255)     Hashed password (Bcrypt)                 │
+│  role_id          BIGINT (FK)      → roles.id (RESTRICT ON DELETE)          │
+│  branch_id        BIGINT (FK,NULL) → branches.id (akan di-FK Module 03+)    │
+│  is_active        BOOLEAN          Status aktif/nonaktif (default: true)    │
+│  remember_token   VARCHAR(100)     Token untuk fitur "Remember Me"          │
+│  created_at       TIMESTAMP        Waktu pembuatan                          │
+│  updated_at       TIMESTAMP        Waktu terakhir diperbarui                │
+│  deleted_at       TIMESTAMP (NULL) Soft delete timestamp                    │
 │                                                                             │
-│  INDEX: role_id, branch_id                                                 │
-│  UNIQUE: username, email (NULL tidak dihitung sebagai duplikat)            │
+│  INDEX: role_id, branch_id                                                  │
+│  UNIQUE: username, email (NULL tidak dihitung sebagai duplikat)             │
 │                                                                             │
-│  Catatan:                                                                  │
-│  - email bersifat NULLABLE: user dapat dibuat tanpa email.                 │
+│  Catatan:                                                                   │
+│  - email bersifat NULLABLE: user dapat dibuat tanpa email.                  │
 │    Login tetap bekerja via kolom username.                                  │
-│    (Migration: 2026_02_27_100001_make_users_email_nullable.php)            │
-│  - branch_id = NULL berarti user memiliki akses ke SEMUA cabang            │
+│    (Migration: 2026_02_27_100001_make_users_email_nullable.php)             │
+│  - branch_id = NULL berarti user memiliki akses ke SEMUA cabang             │
 │    (berlaku untuk role super_admin dan owner)                               │
-│  - Soft delete digunakan agar data audit tetap konsisten                   │
+│  - Soft delete digunakan agar data audit tetap konsisten                    │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 2.2 TABEL: roles                                                           │
+│ 2.2 TABEL: roles                                                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  Kolom            Tipe              Keterangan                              │
-│  ───────────────  ────────────────  ──────────────────────────────────────── │
-│  id               BIGINT (PK)      Auto-increment primary key              │
-│  name             ENUM             Nilai: super_admin, admin_cabang,       │
-│                                    kasir, accounting, owner (UNIQUE)       │
-│  description      VARCHAR(255)     Deskripsi role (nullable)               │
-│  created_at       TIMESTAMP                                                │
-│  updated_at       TIMESTAMP                                                │
+│  ───────────────  ────────────────  ────────────────────────────────────────│
+│  id               BIGINT (PK)      Auto-increment primary key               │
+│  name             VARCHAR(50)      Nilai: super_admin, admin_cabang,        │
+│                                    kasir, accounting, owner (UNIQUE)        │
+│                                    *Validasi via PHP Enum (RoleEnum)        │
+│  description      VARCHAR(255)     Deskripsi role (nullable)                │
+│  created_at       TIMESTAMP                                                 │
+│  updated_at       TIMESTAMP                                                 │
 │                                                                             │
-│  Relasi:                                                                   │
-│  - hasMany → User (satu role punya banyak user)                            │
-│  - belongsToMany → Permission (via pivot table role_permissions)           │
+│  Relasi:                                                                    │
+│  - hasMany → User (satu role punya banyak user)                             │
+│  - belongsToMany → Permission (via pivot table role_permissions)            │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 2.3 TABEL: permissions                                                     │
+│ 2.3 TABEL: permissions                                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  Kolom            Tipe              Keterangan                              │
-│  ───────────────  ────────────────  ──────────────────────────────────────── │
-│  id               BIGINT (PK)      Auto-increment primary key              │
-│  name             VARCHAR(100)     Nama tampilan (contoh: "Lihat Stok")    │
-│  slug             VARCHAR(100)     Identifier unik (contoh: "stock.view")  │
-│  created_at       TIMESTAMP                                                │
-│  updated_at       TIMESTAMP                                                │
+│  ───────────────  ────────────────  ────────────────────────────────────────│
+│  id               BIGINT (PK)      Auto-increment primary key               │
+│  name             VARCHAR(100)     Nama tampilan (contoh: "Lihat Stok")     │
+│  slug             VARCHAR(100)     Identifier unik (contoh: "stock.view")   │
+│  created_at       TIMESTAMP                                                 │
+│  updated_at       TIMESTAMP                                                 │
 │                                                                             │
-│  UNIQUE: slug                                                              │
+│  UNIQUE: slug                                                               │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 2.4 TABEL: role_permissions (Pivot Table)                                  │
+│ 2.4 TABEL: role_permissions (Pivot Table)                                   │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  Kolom            Tipe              Keterangan                              │
-│  ───────────────  ────────────────  ──────────────────────────────────────── │
-│  role_id          BIGINT (FK)      → roles.id (CASCADE ON DELETE)          │
-│  permission_id    BIGINT (FK)      → permissions.id (CASCADE ON DELETE)    │
+│  ───────────────  ────────────────  ────────────────────────────────────────│
+│  role_id          BIGINT (FK)      → roles.id (CASCADE ON DELETE)           │
+│  permission_id    BIGINT (FK)      → permissions.id (CASCADE ON DELETE)     │
 │                                                                             │
-│  PRIMARY KEY: (role_id, permission_id) — komposit                          │
-│  Tidak ada timestamps                                                      │
+│  PRIMARY KEY: (role_id, permission_id) — komposit                           │
+│  Tidak ada timestamps                                                       │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 2.5 TABEL: audit_logs                                                      │
+│ 2.5 TABEL: audit_logs                                                       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  Kolom            Tipe              Keterangan                              │
-│  ───────────────  ────────────────  ──────────────────────────────────────── │
-│  id               BIGINT (PK)      Auto-increment primary key              │
-│  user_id          BIGINT (FK,NULL) → users.id (NULL ON DELETE)             │
-│  action           ENUM             create, update, delete, status_change,  │
-│                                    void, login, logout                     │
-│  auditable_type   VARCHAR(100)     Nama model (contoh: "App\Models\User")  │
-│  auditable_id     BIGINT           ID record yang di-audit                 │
-│  old_values       JSON (NULL)      Snapshot nilai sebelum perubahan        │
-│  new_values       JSON (NULL)      Snapshot nilai setelah perubahan        │
-│  ip_address       VARCHAR(45)      IP address (IPv6-safe, nullable)        │
-│  user_agent       VARCHAR(255)     Browser user agent (nullable)           │
-│  created_at       TIMESTAMP        Waktu kejadian (useCurrent)             │
+│  ───────────────  ────────────────  ────────────────────────────────────────│
+│  id               BIGINT (PK)      Auto-increment primary key               │
+│  user_id          BIGINT (FK,NULL) → users.id (NULL ON DELETE)              │
+│  action           VARCHAR(50)      create, update, delete, status_change,   │
+│                                    void, login, logout                      │
+│                                    *Validasi via PHP Enum                   │
+│  auditable_type   VARCHAR(100)     Nama model (contoh: "App\Models\User")   │
+│  auditable_id     BIGINT           ID record yang di-audit                  │
+│  old_values       JSON (NULL)      Snapshot nilai sebelum perubahan         │
+│  new_values       JSON (NULL)      Snapshot nilai setelah perubahan         │
+│  ip_address       VARCHAR(45)      IP address (IPv6-safe, nullable)         │
+│  user_agent       VARCHAR(255)     Browser user agent (nullable)            │
+│  created_at       TIMESTAMP        Waktu kejadian (useCurrent)              │
 │                                                                             │
-│  INDEX: (auditable_type, auditable_id), (user_id, created_at), created_at  │
+│  INDEX: (auditable_type, auditable_id), (user_id, created_at), created_at   │
 │                                                                             │
-│  ATURAN KRITIS:                                                            │
-│  - Tabel ini APPEND-ONLY → TIDAK boleh update atau delete                  │
-│  - Dijaga via boot() method di model AuditLog yang melempar LogicException │
-│  - Tidak memiliki kolom updated_at                                         │
+│  ATURAN KRITIS:                                                             │
+│  - Tabel ini APPEND-ONLY → TIDAK boleh update atau delete                   │
+│  - Dijaga via boot() method di model AuditLog yang melempar LogicException  │
+│  - Tidak memiliki kolom updated_at                                          │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
@@ -162,143 +164,143 @@ DIAGRAM RELASI (ER):
 ================================================================================
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 3.1 DAFTAR ROLE (RoleEnum)                                                 │
+│ 3.1 DAFTAR ROLE (RoleEnum)                                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Enum Value       Label           Global?   Butuh Branch?   Deskripsi      │
+│  Enum Value       Label           Global?   Butuh Branch?   Deskripsi       │
 │  ───────────────  ──────────────  ────────  ─────────────   ──────────────  │
-│  super_admin      Super Admin     Ya        Tidak           Akses penuh    │
-│  owner            Owner           Ya        Tidak           Read-only all  │
-│  admin_cabang     Admin Cabang    Tidak     Ya              Kelola cabang  │
-│  kasir            Kasir           Tidak     Ya              Input POS      │
-│  accounting       Accounting      Tidak     Ya              Lap. keuangan  │
+│  super_admin      Super Admin     Ya        Tidak           Akses penuh     │
+│  owner            Owner           Ya        Tidak           Read-only all   │
+│  admin_cabang     Admin Cabang    Tidak     Ya              Kelola cabang   │
+│  kasir            Kasir           Tidak     Ya              Input POS       │
+│  accounting       Accounting      Tidak     Ya              Lap. keuangan   │
 │                                                                             │
-│  Global = akses semua cabang tanpa filter (branch_id = NULL)               │
-│  Non-Global = WAJIB punya branch_id (divalidasi di Form Request)           │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 3.2 DAFTAR PERMISSION (38 permission)                                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  MODUL              SLUG                       NAMA TAMPILAN               │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  User Management    users.view                 Lihat Daftar User           │
-│                     users.create               Tambah User                 │
-│                     users.update               Edit User                   │
-│                     users.deactivate           Nonaktifkan User            │
-│                     users.delete               Hapus User (Permanen)       │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  Transaksi POS      transactions.view          Lihat Transaksi             │
-│                     transactions.create        Buat Transaksi              │
-│                     transactions.void          Void Transaksi              │
-│                     transactions.apply_discount Terapkan Diskon Transaksi  │
-│                     transactions.override_price Override Harga Transaksi   │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  Delivery Order     do.view                    Lihat Delivery Order        │
-│                     do.release                 Release Delivery Order      │
-│                     do.update_status           Update Status DO            │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  Inventory          stock.view                 Lihat Stok                  │
-│                     stock.adjust               Penyesuaian Stok            │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  Pricing            prices.view                Lihat Harga                 │
-│                     prices.update_global       Update Harga Global         │
-│                     prices.override_branch     Override Harga per Cabang   │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  Laporan            reports.view_branch        Lihat Laporan Cabang        │
-│                     reports.view_all           Lihat Laporan Semua Cabang  │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  Audit              audit_logs.view            Lihat Audit Log             │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  Master Data: Item  items.view                 Lihat Master Produk         │
-│  (Module 02)        items.create               Tambah Master Produk        │
-│                     items.update               Edit Master Produk          │
-│                     items.deactivate           Nonaktifkan Master Produk   │
-│                     items.import               Import Produk dari Excel     │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  Master Data: Brand brands.view                Lihat Brand                 │
-│  (Module 02)        brands.create              Tambah Brand                │
-│                     brands.update              Edit Brand                  │
-│                     brands.deactivate          Nonaktifkan Brand           │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  Master Data: Kat.  categories.view            Lihat Kategori              │
-│  (Module 02)        categories.create          Tambah Kategori             │
-│                     categories.update          Edit Kategori               │
-│                     categories.deactivate      Nonaktifkan Kategori        │
-│  ─────────────────  ─────────────────────────  ─────────────────────────── │
-│  Master Data: UoM   uoms.view                  Lihat Satuan (UoM)          │
-│  (Module 02)        uoms.create                Tambah Satuan (UoM)         │
-│                     uoms.update                Edit Satuan (UoM)           │
-│                     uoms.deactivate            Nonaktifkan Satuan (UoM)    │
+│  Global = akses semua cabang tanpa filter (branch_id = NULL)                │
+│  Non-Global = WAJIB punya branch_id (divalidasi di Form Request)            │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 3.3 MAPPING ROLE → PERMISSION (dari RolePermissionSeeder)                  │
+│ 3.2 DAFTAR PERMISSION (38 permission)                                       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  SUPER ADMIN:                                                              │
-│  → SEMUA permission (bypass di User::hasPermission(), tidak perlu mapping) │
+│  MODUL              SLUG                       NAMA TAMPILAN                │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  User Management    users.view                 Lihat Daftar User            │
+│                     users.create               Tambah User                  │
+│                     users.update               Edit User                    │
+│                     users.deactivate           Nonaktifkan User             │
+│                     users.delete               Hapus User (Permanen)        │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  Transaksi POS      transactions.view          Lihat Transaksi              │
+│                     transactions.create        Buat Transaksi               │
+│                     transactions.void          Void Transaksi               │
+│                     transactions.apply_discount Terapkan Diskon Transaksi   │
+│                     transactions.override_price Override Harga Transaksi    │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  Delivery Order     do.view                    Lihat Delivery Order         │
+│                     do.release                 Release Delivery Order       │
+│                     do.update_status           Update Status DO             │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  Inventory          stock.view                 Lihat Stok                   │
+│                     stock.adjust               Penyesuaian Stok             │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  Pricing            prices.view                Lihat Harga                  │
+│                     prices.update_global       Update Harga Global          │
+│                     prices.override_branch     Override Harga per Cabang    │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  Laporan            reports.view_branch        Lihat Laporan Cabang         │
+│                     reports.view_all           Lihat Laporan Semua Cabang   │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  Audit              audit_logs.view            Lihat Audit Log              │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  Master Data: Item  items.view                 Lihat Master Produk          │
+│  (Module 02)        items.create               Tambah Master Produk         │
+│                     items.update               Edit Master Produk           │
+│                     items.deactivate           Nonaktifkan Master Produk    │
+│                     items.import               Import Master Produk Excel   │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  Master Data: Brand brands.view                Lihat Brand                  │
+│  (Module 02)        brands.create              Tambah Brand                 │
+│                     brands.update              Edit Brand                   │
+│                     brands.deactivate          Nonaktifkan Brand            │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  Master Data: Kat.  categories.view            Lihat Kategori               │
+│  (Module 02)        categories.create          Tambah Kategori              │
+│                     categories.update          Edit Kategori                │
+│                     categories.deactivate      Nonaktifkan Kategori         │
+│  ─────────────────  ─────────────────────────  ───────────────────────────  │
+│  Master Data: UoM   uoms.view                  Lihat Satuan (UoM)           │
+│  (Module 02)        uoms.create                Tambah Satuan (UoM)          │
+│                     uoms.update                Edit Satuan (UoM)            │
+│                     uoms.deactivate            Nonaktifkan Satuan (UoM)     │
 │                                                                             │
-│  OWNER:                                                                    │
-│  → users.view,                                                             │
-│    transactions.view, do.view, stock.view, prices.view,                   │
-│    reports.view_branch, reports.view_all, audit_logs.view,                │
-│    items.view, brands.view, categories.view, uoms.view                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3.3 MAPPING ROLE → PERMISSION (dari RolePermissionSeeder)                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  SUPER ADMIN:                                                               │
+│  → SEMUA permission (bypass di User::hasPermission(), tidak perlu mapping)  │
+│                                                                             │
+│  OWNER:                                                                     │
+│  → users.view,                                                              │
+│    transactions.view, do.view, stock.view, prices.view,                     │
+│    reports.view_branch, reports.view_all, audit_logs.view,                  │
+│    items.view, brands.view, categories.view, uoms.view                      │
 │  (Catatan: Owner bersifat read-only global — tidak ada create/update/delete)│
 │                                                                             │
-│  ADMIN CABANG:                                                             │
-│  → users.view, users.deactivate,                                          │
-│    transactions.view, transactions.create, transactions.void,             │
-│    transactions.apply_discount, transactions.override_price,              │
-│    do.view, do.release, do.update_status,                                  │
-│    stock.view, stock.adjust,                                               │
-│    prices.view, prices.override_branch,                                    │
-│    reports.view_branch,                                                    │
-│    items.view, items.create, items.update, items.deactivate, items.import, │
-│    brands.view, brands.create, brands.update, brands.deactivate,          │
-│    categories.view, categories.create, categories.update,                 │
-│    categories.deactivate,                                                  │
-│    uoms.view, uoms.create, uoms.update, uoms.deactivate                   │
-│  (Catatan: admin_cabang boleh kelola master data karena katalog global)    │
+│  ADMIN CABANG:                                                              │
+│  → users.view, users.deactivate,                                            │
+│    transactions.view, transactions.create, transactions.void,               │
+│    transactions.apply_discount, transactions.override_price,                │
+│    do.view, do.release, do.update_status,                                   │
+│    stock.view, stock.adjust,                                                │
+│    prices.view, prices.override_branch,                                     │
+│    reports.view_branch,                                                     │
+│    items.view, items.create, items.update, items.deactivate, items.import,  │
+│    brands.view, brands.create, brands.update, brands.deactivate,            │
+│    categories.view, categories.create, categories.update,                   │
+│    categories.deactivate,                                                   │
+│    uoms.view, uoms.create, uoms.update, uoms.deactivate                     │
+│  (Catatan: admin_cabang boleh kelola master data karena katalog global)     │
 │                                                                             │
-│  KASIR:                                                                    │
-│  → transactions.view, transactions.create, transactions.apply_discount,   │
-│    do.view, stock.view, prices.view,                                       │
-│    items.view, brands.view, categories.view, uoms.view                    │
-│  (Catatan: kasir dapat baca master data untuk keperluan POS search)        │
+│  KASIR:                                                                     │
+│  → transactions.view, transactions.create, transactions.apply_discount,     │
+│    do.view, stock.view, prices.view,                                        │
+│    items.view, brands.view, categories.view, uoms.view                      │
+│  (Catatan: kasir dapat baca master data untuk keperluan POS search)         │
 │                                                                             │
-│  ACCOUNTING:                                                               │
-│  → transactions.view, stock.view, prices.view,                             │
-│    reports.view_branch, reports.view_all, audit_logs.view,                │
-│    items.view, brands.view, categories.view, uoms.view                    │
+│  ACCOUNTING:                                                                │
+│  → transactions.view, stock.view, prices.view,                              │
+│    reports.view_branch, reports.view_all, audit_logs.view,                  │
+│    items.view, brands.view, categories.view, uoms.view                      │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 3.4 MEKANISME PENGECEKAN PERMISSION                                        │
+│ 3.4 MEKANISME PENGECEKAN PERMISSION                                         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  ALUR PENGECEKAN:                                                          │
+│  ALUR PENGECEKAN:                                                           │
 │                                                                             │
-│  1. User::hasPermission(string $slug)                                      │
-│     │                                                                      │
-│     ├─ Cek isSuperAdmin()                                                  │
-│     │   ├─ Ya  → return true (bypass semua permission)                     │
-│     │   └─ Tidak → lanjut                                                  │
-│     │                                                                      │
-│     └─ Delegasi ke Role::hasPermission($slug)                              │
-│         │                                                                  │
+│  1. User::hasPermission(string $slug)                                       │
+│     │                                                                       │
+│     ├─ Cek isSuperAdmin()                                                   │
+│     │   ├─ Ya  → return true (bypass semua permission)                      │
+│     │   └─ Tidak → lanjut                                                   │
+│     │                                                                       │
+│     └─ Delegasi ke Role::hasPermission($slug)                               │
+│         │                                                                   │
 │         └─ Cek apakah slug ada di relasi permissions (via role_permissions) │
 │            Menggunakan: $this->permissions->contains('slug', $slug)         │
 │                                                                             │
-│  LOKASI PENGGUNAAN:                                                        │
-│  - UserPolicy (Gate::authorize)                                            │
-│  - RequirePermission middleware                                            │
-│  - Form Request authorize() method                                         │
-│  - Controller langsung (abort_unless)                                      │
+│  LOKASI PENGGUNAAN:                                                         │
+│  - UserPolicy (Gate::authorize)                                             │
+│  - RequirePermission middleware                                             │
+│  - Form Request authorize() method                                          │
+│  - Controller langsung (abort_unless)                                       │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
@@ -312,7 +314,7 @@ RetailControl/
 │   ├── Enums/
 │   │   ├── RoleEnum.php              # Enum 5 role + helper isGlobal(), requiresBranch()
 │   │   └── AuditActionEnum.php       # Enum 7 aksi audit (create/update/delete/login/dll)
-│   │
+│                                                                             │
 │   ├── Models/
 │   │   ├── User.php                  # Model utama, extends Authenticatable
 │   │   │                             # Traits: HasFactory, Notifiable, SoftDeletes, Auditable
@@ -320,24 +322,32 @@ RetailControl/
 │   │   │                             # Helper: isSuperAdmin(), isOwner(), isGlobal(),
 │   │   │                             #         hasPermission(), getAccessibleBranchId(),
 │   │   │                             #         canAccessBranch()
-│   │   │
+│   │                                                                         │
 │   │   ├── Role.php                  # Model role, cast name → RoleEnum
 │   │   │                             # Relasi: belongsToMany Permission, hasMany User
 │   │   │                             # Helper: hasPermission(slug)
-│   │   │
+│   │                                                                         │
 │   │   ├── Permission.php            # Model permission (name + slug)
 │   │   │                             # Relasi: belongsToMany Role
-│   │   │
+│   │                                                                         │
 │   │   ├── AuditLog.php              # Model audit log, append-only
 │   │   │                             # Guard: updating/deleting → throw LogicException
 │   │   │                             # Relasi: belongsTo User (withTrashed)
-│   │   │
+│   │                                                                         │
+│   │   ├── Branch.php                # [Stub] Model cabang (tabel belum ada)
+│   │   │                             # Dibuat agar User::branch() tidak throw Class Not Found
+│   │   │                             # fillable: name, code, address, is_active
+│   │   │                             # Relasi: hasMany User
+│   │   │                             # Catatan: tabel branches dibuat di Module 03+
+│   │                                                                         │
 │   │   ├── Brand.php                 # [Mod02] id, name(unique), is_active
 │   │   │                             # Trait: Auditable
 │   │   ├── Category.php              # [Mod02] id, parent_id(nullable), name, code(unique), is_active
 │   │   │                             # Trait: Auditable
 │   │   │                             # Relasi: parent(), children(), attributeDefinitions()
-│   │   ├── Uom.php                   # [Mod02] id, code(unique), name
+│   │   ├── Uom.php                   # [Mod02] id, code(unique), name, is_active
+│   │   │                             # Trait: Auditable
+│   │   │                             # Cast: is_active → boolean
 │   │   │                             # Relasi: itemsAsBase(), itemsAsPurchase()
 │   │   ├── Item.php                  # [Mod02] SKU master
 │   │   │                             # Trait: Auditable
@@ -352,17 +362,18 @@ RetailControl/
 │   │   │                             #   price_uom_id, notes_json (unique: price_list_id+item_id)
 │   │   └── AttributeDefinition.php  # [Mod02] key(unique), label, data_type, unit,
 │   │                                 #   options_json, is_required
-│   │
+│                                                                             │
 │   ├── Http/
 │   │   ├── Kernel.php                # Registrasi middleware alias:
 │   │   │                             #   'active'     → EnsureUserIsActive
 │   │   │                             #   'permission' → RequirePermission
-│   │   │
+│   │   │                             #   'auth.session' → AuthenticateSession
+│   │                                                                         │
 │   │   ├── Controllers/
 │   │   │   ├── Auth/
 │   │   │   │   ├── LoginController.php    # show() + store() — login form & proses
 │   │   │   │   └── LogoutController.php   # destroy() — logout & redirect
-│   │   │   │
+│   │   │                                                                     │
 │   │   │   └── Admin/
 │   │   │       ├── UserController.php     # CRUD + deactivate user
 │   │   │       │                          # Methods: index/create/store/edit/update/destroy/deactivate
@@ -370,23 +381,23 @@ RetailControl/
 │   │   │       ├── AuditLogController.php # index() — lihat audit log + filter
 │   │   │       ├── BrandController.php    # [Mod02] CRUD + deactivate brand
 │   │   │       ├── CategoryController.php # [Mod02] CRUD + deactivate kategori (parent_id)
-│   │   │       ├── UomController.php      # [Mod02] CRUD satuan ukuran
+│   │   │       ├── UomController.php      # [Mod02] CRUD + deactivate satuan ukuran
 │   │   │       └── ItemController.php     # [Mod02] CRUD + deactivate + import SKU
 │   │   │                                  #   index(filter: brand/cat/active/keyword)
 │   │   │                                  #   show(audit log), importForm, import
-│   │   │
+│   │                                                                         │
 │   │   ├── Middleware/
 │   │   │   ├── EnsureUserIsActive.php     # Cek is_active, logout jika nonaktif
 │   │   │   └── RequirePermission.php      # Cek permission slug (OR logic untuk multi-perm)
-│   │   │
+│   │                                                                         │
 │   │   └── Requests/
 │   │       ├── Auth/
 │   │       │   └── LoginRequest.php       # Validasi: login (required), password (required)
-│   │       │
+│   │                                                                         │
 │   │       └── Admin/
 │   │           ├── StoreUserRequest.php   # Validasi pembuatan user + branch logic
 │   │           └── UpdateUserRequest.php  # Validasi update user + branch logic
-│   │
+│                                                                             │
 │   ├── Policies/
 │   │   ├── UserPolicy.php            # Otorisasi user: viewAny, view, create, update,
 │   │   │                             #   deactivate, delete
@@ -398,35 +409,35 @@ RetailControl/
 │   │   ├── UomPolicy.php             # [Mod02] viewAny, view, create, update, deactivate
 │   │   └── ItemPolicy.php            # [Mod02] viewAny, view, create, update,
 │   │                                 #   deactivate, import
-│   │
+│                                                                             │
 │   ├── Services/
 │   │   ├── Auth/
 │   │   │   └── LoginService.php      # Business logic login/logout
 │   │   │                             # - Cari user via email ATAU username
 │   │   │                             # - Validasi password + is_active
 │   │   │                             # - Catat audit log login/logout
-│   │   │
+│   │                                                                         │
 │   │   ├── Audit/
 │   │   │   └── AuditLogger.php       # Service catat audit log
 │   │   │                             # - log(): catat perubahan model
 │   │   │                             # - logAuth(): shorthand untuk login/logout
-│   │   │
+│   │                                                                         │
 │   │   └── Product/
 │   │       └── ExcelImportService.php # [Mod02] Import 11 sheet Excel → SKU + price
 │   │                                  # Library: shuchkin/simplexlsx (pure PHP, no ext-zip)
-│   │
+│                                                                             │
 │   ├── Traits/
 │   │   ├── Auditable.php             # Auto-audit pada created/updated/deleted event
 │   │   │                             # - Mencatat old_values dan new_values
 │   │   │                             # - Mengecualikan kolom sensitif ($auditExclude)
-│   │   │
+│   │                                                                         │
 │   │   └── BranchScoped.php          # Scope query per cabang
 │   │                                 # scopeForBranch($branchId) — NULL = no filter
-│   │
+│                                                                             │
 │   ├── Console/Commands/
 │   │   └── ImportProductsCommand.php # [Mod02] php artisan products:import {path?}
 │   │                                 # Auto-cari .xlsx di storage/app/imports/ jika path kosong
-│   │
+│                                                                             │
 │   └── Providers/
 │       └── AuthServiceProvider.php   # Mapping policies: User, Item, Brand, Category,
 │                                     #   Uom → masing-masing Policy class
@@ -443,6 +454,7 @@ RetailControl/
 │   │   ├── add_role_foreign_key_to_users_table.php
 │   │   ├── create_audit_logs_table.php
 │   │   ├── 2026_02_27_100001_make_users_email_nullable.php  ← [Mod01] email nullable
+│   │   ├── 2026_02_28_100001_create_sessions_table.php      ← [Mod01] database session
 │   │   ├── 2026_02_27_200001_create_brands_table.php        ← [Mod02]
 │   │   ├── 2026_02_27_200002_create_categories_table.php    ← [Mod02] parent_id
 │   │   ├── 2026_02_27_200003_create_uoms_table.php          ← [Mod02]
@@ -450,9 +462,10 @@ RetailControl/
 │   │   ├── 2026_02_27_200005_create_item_barcodes_table.php ← [Mod02]
 │   │   ├── 2026_02_27_200006_create_price_lists_table.php   ← [Mod02]
 │   │   ├── 2026_02_27_200007_create_price_list_items_table.php ← [Mod02]
-│   │   └── 2026_02_27_200008_create_attribute_definitions_table.php ← [Mod02]
-│   │       (juga membuat table category_attribute_sets via pivot)
-│   │
+│   │   ├── 2026_02_27_200008_create_attribute_definitions_table.php ← [Mod02]
+│   │   │   (juga membuat table category_attribute_sets via pivot)
+│   │   └── 2026_02_27_300001_add_is_active_to_uoms_table.php ← [Fix] is_active default true
+│                                                                             │
 │   └── seeders/
 │       ├── DatabaseSeeder.php          # Urutan: Module01 seeders → Module02 seeders
 │       ├── RoleSeeder.php              # Buat/update 5 role
@@ -477,90 +490,90 @@ RetailControl/
 ================================================================================
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ FLOW LOGIN                                                                 │
+│ FLOW LOGIN                                                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  ┌──────────────┐                                                          │
-│  │ User membuka │                                                          │
-│  │  /login      │                                                          │
-│  └──────┬───────┘                                                          │
+│  ┌──────────────┐                                                           │
+│  │ User membuka │                                                           │
+│  │  /login      │                                                           │
+│  └──────┬───────┘                                                           │
 │         │                                                                   │
 │         ▼                                                                   │
-│  ┌────────────────────────────────────┐                                    │
-│  │ Middleware: 'guest'                │                                    │
-│  │ (RedirectIfAuthenticated)          │                                    │
-│  │                                    │                                    │
-│  │ Sudah login? → redirect /dashboard │                                    │
-│  │ Belum login? → lanjut              │                                    │
-│  └──────┬─────────────────────────────┘                                    │
+│  ┌────────────────────────────────────┐                                     │
+│  │ Middleware: 'guest'                │                                     │
+│  │ (RedirectIfAuthenticated)          │                                     │
+│  │                                    │                                     │
+│  │ Sudah login? → redirect /dashboard │                                     │
+│  │ Belum login? → lanjut              │                                     │
+│  └──────┬─────────────────────────────┘                                     │
 │         │                                                                   │
 │         ▼                                                                   │
-│  ┌──────────────────────────────────────┐                                  │
-│  │ LoginController::show()              │                                  │
-│  │ → Tampilkan view 'auth.login'        │                                  │
-│  └──────┬───────────────────────────────┘                                  │
+│  ┌──────────────────────────────────────┐                                   │
+│  │ LoginController::show()              │                                   │
+│  │ → Tampilkan view 'auth.login'        │                                   │
+│  └──────┬───────────────────────────────┘                                   │
 │         │                                                                   │
-│         │  User isi form → POST /login                                     │
+│         │  User isi form → POST /login                                      │
 │         ▼                                                                   │
-│  ┌──────────────────────────────────────┐                                  │
-│  │ LoginRequest (Form Request)          │                                  │
-│  │ Validasi:                            │                                  │
-│  │   - login: required, string, max:150 │                                  │
-│  │   - password: required, string       │                                  │
-│  │   - remember: boolean (opsional)     │                                  │
-│  └──────┬───────────────────────────────┘                                  │
-│         │                                                                   │
-│         ▼                                                                   │
-│  ┌──────────────────────────────────────┐                                  │
-│  │ LoginController::store()             │                                  │
-│  │ → Panggil LoginService::attempt()    │                                  │
-│  └──────┬───────────────────────────────┘                                  │
+│  ┌──────────────────────────────────────┐                                   │
+│  │ LoginRequest (Form Request)          │                                   │
+│  │ Validasi:                            │                                   │
+│  │   - login: required, string, max:150 │                                   │
+│  │   - password: required, string       │                                   │
+│  │   - remember: boolean (opsional)     │                                   │
+│  └──────┬───────────────────────────────┘                                   │
 │         │                                                                   │
 │         ▼                                                                   │
-│  ┌──────────────────────────────────────────────────────────────────────┐  │
-│  │ LoginService::attempt(login, password, remember)                     │  │
-│  │                                                                      │  │
-│  │  1. findUser(login)                                                  │  │
-│  │     │                                                                │  │
-│  │     ├─ Input mengandung '@'?                                         │  │
-│  │     │   ├─ Ya  → cari di kolom 'email'                              │  │
-│  │     │   └─ Tidak → cari di kolom 'username' (case-insensitive)      │  │
-│  │     │                                                                │  │
-│  │     └─ Eager-load: role.permissions (untuk pengecekan permission)   │  │
-│  │                                                                      │  │
-│  │  2. Validasi password (Hash::check)                                  │  │
-│  │     └─ Gagal → throw AuthenticationException('Kredensial tidak      │  │
-│  │                valid.')                                               │  │
-│  │                                                                      │  │
-│  │  3. Cek is_active                                                    │  │
-│  │     └─ false → throw AuthenticationException('Akun Anda tidak       │  │
-│  │                aktif. Hubungi administrator.')                        │  │
-│  │                                                                      │  │
-│  │  4. Auth::login($user, $remember)                                    │  │
-│  │     → Buat session, set cookie (+ remember token jika remember=true)│  │
-│  │                                                                      │  │
-│  │  5. AuditLogger::logAuth(Login, $user)                               │  │
-│  │     → Catat ke audit_logs: action=login, ip_address, user_agent     │  │
-│  │                                                                      │  │
-│  │  6. Return $user                                                     │  │
-│  └──────────────────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────┐                                   │
+│  │ LoginController::store()             │                                   │
+│  │ → Panggil LoginService::attempt()    │                                   │
+│  └──────┬───────────────────────────────┘                                   │
 │         │                                                                   │
 │         ▼                                                                   │
-│  ┌──────────────────────────────────────┐                                  │
-│  │ LoginController::store() (lanjutan)  │                                  │
-│  │                                      │                                  │
-│  │  - session()->regenerate()           │                                  │
-│  │    (cegah session fixation attack)   │                                  │
-│  │                                      │                                  │
-│  │  - redirect()->intended('/dashboard')│                                  │
-│  │    (redirect ke URL yang diminta     │                                  │
-│  │     sebelumnya, atau /dashboard)     │                                  │
-│  └──────────────────────────────────────┘                                  │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ LoginService::attempt(login, password, remember)                     │   │
+│  │                                                                      │   │
+│  │  1. findUser(login)                                                  │   │
+│  │     │                                                                │   │
+│  │     ├─ Input mengandung '@'?                                         │   │
+│  │     │   ├─ Ya  → cari di kolom 'email'                               │   │
+│  │     │   └─ Tidak → cari di kolom 'username' (case-insensitive)       │   │
+│  │     │                                                                │   │
+│  │     └─ Eager-load: role.permissions (untuk pengecekan permission)    │   │
+│  │                                                                      │   │
+│  │  2. Validasi password (Hash::check)                                  │   │
+│  │     └─ Gagal → throw AuthenticationException('Kredensial tidak       │   │
+│  │                valid.')                                              │   │
+│  │                                                                      │   │
+│  │  3. Cek is_active                                                    │   │
+│  │     └─ false → throw AuthenticationException('Akun Anda tidak        │   │
+│  │                aktif. Hubungi administrator.')                       │   │
+│  │                                                                      │   │
+│  │  4. Auth::login($user, $remember)                                    │   │
+│  │     → Buat session, set cookie (+ remember token jika remember=true) │   │
+│  │                                                                      │   │
+│  │  5. AuditLogger::logAuth(Login, $user)                               │   │
+│  │     → Catat ke audit_logs: action=login, ip_address, user_agent      │   │
+│  │                                                                      │   │
+│  │  6. Return $user                                                     │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌──────────────────────────────────────┐                                   │
+│  │ LoginController::store() (lanjutan)  │                                   │
+│  │                                      │                                   │
+│  │  - session()->regenerate()           │                                   │
+│  │    (cegah session fixation attack)   │                                   │
+│  │                                      │                                   │
+│  │  - redirect()->intended('/dashboard')│                                   │
+│  │    (redirect ke URL yang diminta     │                                   │
+│  │     sebelumnya, atau /dashboard)     │                                   │
+│  └──────────────────────────────────────┘                                   │
 │                                                                             │
-│  JIKA GAGAL:                                                               │
-│  - AuthenticationException ditangkap di catch block                        │
-│  - Redirect back + withInput (login, remember) + withErrors                │
-│  - Pesan error ditampilkan di form login                                   │
+│  JIKA GAGAL:                                                                │
+│  - AuthenticationException ditangkap di catch block                         │
+│  - Redirect back + withInput (login, remember) + withErrors                 │
+│  - Pesan error ditampilkan di form login                                    │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
@@ -570,51 +583,52 @@ RetailControl/
 ================================================================================
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ FLOW LOGOUT                                                                │
+│ FLOW LOGOUT                                                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  ┌──────────────┐                                                          │
-│  │ User klik    │                                                          │
-│  │ "Logout"     │                                                          │
-│  │ POST /logout │                                                          │
-│  └──────┬───────┘                                                          │
+│  ┌──────────────┐                                                           │
+│  │ User klik    │                                                           │
+│  │ "Logout"     │                                                           │
+│  │ POST /logout │                                                           │
+│  └──────┬───────┘                                                           │
 │         │                                                                   │
 │         ▼                                                                   │
-│  ┌──────────────────────────────────────┐                                  │
-│  │ Middleware: 'auth' + 'active'        │                                  │
-│  │ → Pastikan user authenticated        │                                  │
-│  │ → Pastikan user masih aktif          │                                  │
-│  └──────┬───────────────────────────────┘                                  │
+│  ┌───────────────────────────────────────────┐                              │
+│  │ Middleware: 'auth' + 'auth.session' +     │                              │
+│  │             'active'                      │                              │
+│  │ → Pastikan user authenticated             │                              │
+│  │ → Pastikan user masih aktif               │                              │
+│  └──────┬────────────────────────────────────┘                              │
 │         │                                                                   │
 │         ▼                                                                   │
-│  ┌──────────────────────────────────────┐                                  │
-│  │ LogoutController::destroy()          │                                  │
-│  │ → Panggil LoginService::logout()     │                                  │
-│  └──────┬───────────────────────────────┘                                  │
+│  ┌──────────────────────────────────────┐                                   │
+│  │ LogoutController::destroy()          │                                   │
+│  │ → Panggil LoginService::logout()     │                                   │
+│  └──────┬───────────────────────────────┘                                   │
 │         │                                                                   │
 │         ▼                                                                   │
-│  ┌──────────────────────────────────────────────────────────────────┐      │
-│  │ LoginService::logout()                                           │      │
-│  │                                                                  │      │
-│  │  1. Ambil user yang sedang login (Auth::user())                  │      │
-│  │                                                                  │      │
-│  │  2. AuditLogger::logAuth(Logout, $user)                          │      │
-│  │     → Catat ke audit_logs: action=logout, ip_address             │      │
-│  │                                                                  │      │
-│  │  3. Auth::logout()                                               │      │
-│  │     → Hapus session authentication                               │      │
-│  │                                                                  │      │
-│  │  4. session()->invalidate()                                      │      │
-│  │     → Invalidasi seluruh session data                            │      │
-│  │                                                                  │      │
-│  │  5. session()->regenerateToken()                                  │      │
-│  │     → Regenerasi CSRF token (cegah CSRF attack)                  │      │
-│  └──────────────────────────────────────────────────────────────────┘      │
+│  ┌──────────────────────────────────────────────────────────────────┐       │
+│  │ LoginService::logout()                                           │       │
+│  │                                                                  │       │
+│  │  1. Ambil user yang sedang login (Auth::user())                  │       │
+│  │                                                                  │       │
+│  │  2. AuditLogger::logAuth(Logout, $user)                          │       │
+│  │     → Catat ke audit_logs: action=logout, ip_address             │       │
+│  │                                                                  │       │
+│  │  3. Auth::logout()                                               │       │
+│  │     → Hapus session authentication                               │       │
+│  │                                                                  │       │
+│  │  4. session()->invalidate()                                      │       │
+│  │     → Invalidasi seluruh session data                            │       │
+│  │                                                                  │       │
+│  │  5. session()->regenerateToken()                                 │       │
+│  │     → Regenerasi CSRF token (cegah CSRF attack)                  │       │
+│  └──────────────────────────────────────────────────────────────────┘       │
 │         │                                                                   │
 │         ▼                                                                   │
-│  ┌──────────────────────────────────────┐                                  │
-│  │ Redirect ke /login                   │                                  │
-│  └──────────────────────────────────────┘                                  │
+│  ┌──────────────────────────────────────┐                                   │
+│  │ Redirect ke /login                   │                                   │
+│  └──────────────────────────────────────┘                                   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
@@ -651,17 +665,18 @@ RetailControl/
                             │
                             ▼
   ┌────────────────────────────────────────────────────────────────────┐
-  │ ROUTE MIDDLEWARE (tergantung route group)                           │
+  │ ROUTE MIDDLEWARE (tergantung route group)                          │
   │                                                                    │
   │  Guest routes:                                                     │
   │    → 'guest' (RedirectIfAuthenticated)                             │
   │                                                                    │
   │  Authenticated routes:                                             │
-  │    → 'auth' (Authenticate — redirect ke /login jika belum)        │
-  │    → 'active' (EnsureUserIsActive — logout jika is_active=false)  │
+  │    → 'auth' (Authenticate — redirect ke /login jika belum)         │
+  │    → 'auth.session' (Autentikasi session database)                 │
+  │    → 'active' (EnsureUserIsActive — logout jika is_active=false)   │
   │                                                                    │
   │  Permission-protected routes (contoh: audit-logs):                 │
-  │    → 'permission:audit_logs.view' (RequirePermission — abort 403) │
+  │    → 'permission:audit_logs.view' (RequirePermission — abort 403)  │
   └─────────────────────────┬──────────────────────────────────────────┘
                             │
                             ▼
@@ -681,7 +696,7 @@ RetailControl/
 ═══════════════════════════════════════════════════════════════════════════════
 
   Request: GET /admin/users
-  Middleware: auth → active
+  Middleware: auth → auth.session → active
   Controller: UserController::index()
 
   Flow:
@@ -691,7 +706,7 @@ RetailControl/
      → Super Admin: otomatis lolos
      → Tidak punya: 403 Forbidden
 
-  2. Query: User::with('role')->orderBy('name')->paginate(20)
+  2. Query: User::with('role')->orderBy('name')->paginate(10)
 
   3. Return view: admin.users.index (dengan data $users)
 
@@ -701,7 +716,7 @@ RetailControl/
 ═══════════════════════════════════════════════════════════════════════════════
 
   Request: GET /admin/users/create
-  Middleware: auth → active
+  Middleware: auth → auth.session → active
   Controller: UserController::create()
 
   Flow:
@@ -719,7 +734,7 @@ RetailControl/
 ═══════════════════════════════════════════════════════════════════════════════
 
   Request: POST /admin/users
-  Middleware: auth → active
+  Middleware: auth → auth.session → active
   Controller: UserController::store()
 
   Flow:
@@ -755,7 +770,7 @@ RetailControl/
 ═══════════════════════════════════════════════════════════════════════════════
 
   Request: GET /admin/users/{user}/edit
-  Middleware: auth → active
+  Middleware: auth → auth.session → active
   Controller: UserController::edit()
 
   Flow:
@@ -774,7 +789,7 @@ RetailControl/
 ═══════════════════════════════════════════════════════════════════════════════
 
   Request: PUT /admin/users/{user}
-  Middleware: auth → active
+  Middleware: auth → auth.session → active
   Controller: UserController::update()
 
   Flow:
@@ -809,7 +824,7 @@ RetailControl/
 ═══════════════════════════════════════════════════════════════════════════════
 
   Request: DELETE /admin/users/{user}
-  Middleware: auth → active
+  Middleware: auth → auth.session → active
   Controller: UserController::destroy()
 
   Flow:
@@ -834,7 +849,7 @@ RetailControl/
 ═══════════════════════════════════════════════════════════════════════════════
 
   Request: PATCH /admin/users/{user}/deactivate
-  Middleware: auth → active
+  Middleware: auth → auth.session → active
   Controller: UserController::deactivate()
 
   Flow:
@@ -865,69 +880,69 @@ RetailControl/
 ================================================================================
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 9.1 PENCATATAN OTOMATIS (via Auditable Trait)                              │
+│ 9.1 PENCATATAN OTOMATIS (via Auditable Trait)                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  Trait Auditable mendaftarkan 3 event listener di bootAuditable():          │
 │                                                                             │
-│  EVENT         AKSI                                                        │
+│  EVENT         AKSI                                                         │
 │  ───────────   ────────────────────────────────────────────────────────     │
-│  created       Catat action='create', new_values = semua atribut           │
+│  created       Catat action='create', new_values = semua atribut            │
 │                (kecuali $auditExclude)                                      │
 │                                                                             │
-│  updated       Catat action='update',                                      │
+│  updated       Catat action='update',                                       │
 │                old_values = nilai lama kolom yang berubah,                  │
 │                new_values = nilai baru kolom yang berubah                   │
 │                (kecuali $auditExclude)                                      │
 │                Skip jika tidak ada perubahan yang perlu dicatat             │
 │                                                                             │
-│  deleted       Catat action='delete', old_values = semua atribut           │
-│                (kecuali $auditExclude, termasuk soft delete)               │
+│  deleted       Catat action='delete', old_values = semua atribut            │
+│                (kecuali $auditExclude, termasuk soft delete)                │
 │                                                                             │
-│  $auditExclude default: ['password', 'remember_token']                     │
-│  Dapat di-override per model via property $auditExclude                    │
+│  $auditExclude default: ['password', 'remember_token']                      │
+│  Dapat di-override per model via property $auditExclude                     │
 │                                                                             │
-│  SETIAP entry audit berisi:                                                │
-│  - user_id      : siapa yang melakukan aksi (Auth::id())                   │
-│  - ip_address   : IP address yang melakukan request                        │
-│  - user_agent   : Browser/client info                                      │
-│  - created_at   : timestamp kejadian                                       │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 9.2 PENCATATAN MANUAL (via AuditLogger Service)                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  AuditLogger::log(action, auditable, oldValues, newValues)                 │
-│  → Untuk aksi yang bukan CRUD Eloquent (contoh: void transaksi)           │
-│                                                                             │
-│  AuditLogger::logAuth(action, user)                                        │
-│  → Shorthand khusus login/logout                                           │
-│  → Otomatis menyertakan ip_address di new_values                          │
+│  SETIAP entry audit berisi:                                                 │
+│  - user_id      : siapa yang melakukan aksi (Auth::id())                    │
+│  - ip_address   : IP address yang melakukan request                         │
+│  - user_agent   : Browser/client info                                       │
+│  - created_at   : timestamp kejadian                                        │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 9.3 MELIHAT AUDIT LOG                                                      │
+│ 9.2 PENCATATAN MANUAL (via AuditLogger Service)                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Request: GET /admin/audit-logs                                            │
-│  Middleware: auth → active → permission:audit_logs.view                     │
-│  Controller: AuditLogController::index()                                   │
+│  AuditLogger::log(action, auditable, oldValues, newValues)                  │
+│  → Untuk aksi yang bukan CRUD Eloquent (contoh: void transaksi)             │
 │                                                                             │
-│  Pengecekan ganda:                                                         │
-│  1. RequirePermission middleware → permission 'audit_logs.view'            │
-│  2. abort_unless di controller → permission 'audit_logs.view'              │
+│  AuditLogger::logAuth(action, user)                                         │
+│  → Shorthand khusus login/logout                                            │
+│  → Otomatis menyertakan ip_address di new_values                            │
 │                                                                             │
-│  Filter yang tersedia (query string):                                      │
-│  - auditable_type : filter berdasarkan model (contoh: "App\Models\User")   │
-│  - user_id        : filter berdasarkan pelaku aksi                         │
-│  - action         : filter berdasarkan jenis aksi                          │
-│  - date_from      : filter dari tanggal tertentu                           │
-│  - date_to        : filter hingga tanggal tertentu                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 9.3 MELIHAT AUDIT LOG                                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Paginasi: 50 record per halaman, dengan query string dipertahankan       │
+│  Request: GET /admin/audit-logs                                             │
+│  Middleware: auth → auth.session → active → permission:audit_logs.view      │
+│  Controller: AuditLogController::index()                                    │
+│                                                                             │
+│  Pengecekan ganda:                                                          │
+│  1. RequirePermission middleware → permission 'audit_logs.view'             │
+│  2. abort_unless di controller → permission 'audit_logs.view'               │
+│                                                                             │
+│  Filter yang tersedia (query string):                                       │
+│  - auditable_type : filter berdasarkan model (contoh: "App\Models\User")    │
+│  - user_id        : filter berdasarkan pelaku aksi                          │
+│  - action         : filter berdasarkan jenis aksi                           │
+│  - date_from      : filter dari tanggal tertentu                            │
+│  - date_to        : filter hingga tanggal tertentu                          │
+│                                                                             │
+│  Paginasi: 10 record per halaman, dengan query string dipertahankan         │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
@@ -937,37 +952,37 @@ RetailControl/
 ================================================================================
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ MEKANISME MULTI-BRANCH                                                     │
+│ MEKANISME MULTI-BRANCH                                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  KONSEP:                                                                   │
-│  - Role GLOBAL (super_admin, owner) → branch_id = NULL → akses semua      │
-│  - Role NON-GLOBAL (admin_cabang, kasir, accounting)                       │
-│    → WAJIB punya branch_id → hanya akses cabang yang ditugaskan            │
+│  KONSEP:                                                                    │
+│  - Role GLOBAL (super_admin, owner) → branch_id = NULL → akses semua        │
+│  - Role NON-GLOBAL (admin_cabang, kasir, accounting)                        │
+│    → WAJIB punya branch_id → hanya akses cabang yang ditugaskan             │
 │                                                                             │
-│  HELPER di User Model:                                                     │
+│  HELPER di User Model:                                                      │
 │                                                                             │
 │  getAccessibleBranchId(): ?int                                              │
-│    → Return NULL jika isGlobal() (berarti: akses semua, jangan filter)     │
-│    → Return branch_id jika non-global                                      │
+│    → Return NULL jika isGlobal() (berarti: akses semua, jangan filter)      │
+│    → Return branch_id jika non-global                                       │
 │                                                                             │
 │  canAccessBranch(int $branchId): bool                                       │
-│    → Return true jika isGlobal() ATAU branch_id cocok                      │
+│    → Return true jika isGlobal() ATAU branch_id cocok                       │
 │                                                                             │
 │  BranchScoped Trait (untuk model lain seperti Transaction, Product, dll):   │
 │                                                                             │
 │  scopeForBranch(?int $branchId)                                             │
-│    → Jika $branchId = NULL → no filter (return query apa adanya)           │
-│    → Jika $branchId = angka → WHERE branch_id = $branchId                  │
+│    → Jika $branchId = NULL → no filter (return query apa adanya)            │
+│    → Jika $branchId = angka → WHERE branch_id = $branchId                   │
 │                                                                             │
-│  PENGGUNAAN DI CONTROLLER:                                                 │
+│  PENGGUNAAN DI CONTROLLER:                                                  │
 │    $branchId = auth()->user()->getAccessibleBranchId();                     │
-│    Transaction::forBranch($branchId)->get();                               │
+│    Transaction::forBranch($branchId)->get();                                │
 │                                                                             │
-│  VALIDASI DI FORM REQUEST:                                                 │
-│  - Saat membuat/edit user, branch_id WAJIB diisi untuk role non-global     │
-│  - Saat membuat/edit user, branch_id TIDAK BOLEH diisi untuk role global   │
-│  - Controller UserController menimpa branch_id = null untuk role global    │
+│  VALIDASI DI FORM REQUEST:                                                  │
+│  - Saat membuat/edit user, branch_id WAJIB diisi untuk role non-global      │
+│  - Saat membuat/edit user, branch_id TIDAK BOLEH diisi untuk role global    │
+│  - Controller UserController menimpa branch_id = null untuk role global     │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
@@ -976,58 +991,58 @@ RetailControl/
  11. ROUTE MAP
 ================================================================================
 
-  METHOD   URI                              NAME                      MIDDLEWARE           HANDLER
-  ──────   ───────────────────────────────  ────────────────────────  ──────────────────   ──────────────────────────────
-  GET      /login                           login                     guest                LoginController::show
-  POST     /login                           login.store               guest                LoginController::store
-  POST     /logout                          logout                    auth, active         LogoutController::destroy
-  GET      /dashboard                       dashboard                 auth, active         Closure (inline)
+  METHOD   URI                              NAME                      MIDDLEWARE                  HANDLER
+  ──────   ───────────────────────────────  ────────────────────────  ─────────────────────────   ──────────────────────────────
+  GET      /login                           login                     guest                       LoginController::show
+  POST     /login                           login.store               guest, throttle:5,1         LoginController::store
+  POST     /logout                          logout                    auth,auth.session,active    LogoutController::destroy
+  GET      /dashboard                       dashboard                 auth,auth.session,active    Closure (inline)
 
   ── User Management ──────────────────────────────────────────────────────────────────────────────────────────────
-  GET      /admin/users                     admin.users.index         auth, active         UserController::index
-  GET      /admin/users/create              admin.users.create        auth, active         UserController::create
-  POST     /admin/users                     admin.users.store         auth, active         UserController::store
-  GET      /admin/users/{user}/edit         admin.users.edit          auth, active         UserController::edit
-  PUT      /admin/users/{user}              admin.users.update        auth, active         UserController::update
-  DELETE   /admin/users/{user}              admin.users.destroy       auth, active         UserController::destroy
-  PATCH    /admin/users/{user}/deactivate   admin.users.deactivate    auth, active         UserController::deactivate
-  GET      /admin/audit-logs                admin.audit-logs.index    auth,active,         AuditLogController::index
-                                                                       permission:
-                                                                       audit_logs.view
+  GET      /admin/users                     admin.users.index         auth,auth.session,active    UserController::index
+  GET      /admin/users/create              admin.users.create        auth,auth.session,active    UserController::create
+  POST     /admin/users                     admin.users.store         auth,auth.session,active    UserController::store
+  GET      /admin/users/{user}/edit         admin.users.edit          auth,auth.session,active    UserController::edit
+  PUT      /admin/users/{user}              admin.users.update        auth,auth.session,active    UserController::update
+  DELETE   /admin/users/{user}              admin.users.destroy       auth,auth.session,active    UserController::destroy
+  PATCH    /admin/users/{user}/deactivate   admin.users.deactivate    auth,auth.session,active    UserController::deactivate
+  GET      /admin/audit-logs                admin.audit-logs.index    auth,auth.session,active,   AuditLogController::index
+                                                                      permission:audit_logs.view
 
   ── Master Data: Brand (Module 02) ───────────────────────────────────────────────────────────────────────────────
-  GET      /admin/brands                    admin.brands.index        auth, active         BrandController::index
-  GET      /admin/brands/create             admin.brands.create       auth, active         BrandController::create
-  POST     /admin/brands                    admin.brands.store        auth, active         BrandController::store
-  GET      /admin/brands/{brand}/edit       admin.brands.edit         auth, active         BrandController::edit
-  PUT      /admin/brands/{brand}            admin.brands.update       auth, active         BrandController::update
-  PATCH    /admin/brands/{brand}/deactivate admin.brands.deactivate   auth, active         BrandController::deactivate
+  GET      /admin/brands                    admin.brands.index        auth,auth.session,active    BrandController::index
+  GET      /admin/brands/create             admin.brands.create       auth,auth.session,active    BrandController::create
+  POST     /admin/brands                    admin.brands.store        auth,auth.session,active    BrandController::store
+  GET      /admin/brands/{brand}/edit       admin.brands.edit         auth,auth.session,active    BrandController::edit
+  PUT      /admin/brands/{brand}            admin.brands.update       auth,auth.session,active    BrandController::update
+  PATCH    /admin/brands/{brand}/deactivate admin.brands.deactivate   auth,auth.session,active    BrandController::deactivate
 
   ── Master Data: Category (Module 02) ────────────────────────────────────────────────────────────────────────────
-  GET      /admin/categories                admin.categories.index    auth, active         CategoryController::index
-  GET      /admin/categories/create         admin.categories.create   auth, active         CategoryController::create
-  POST     /admin/categories                admin.categories.store    auth, active         CategoryController::store
-  GET      /admin/categories/{cat}/edit     admin.categories.edit     auth, active         CategoryController::edit
-  PUT      /admin/categories/{cat}          admin.categories.update   auth, active         CategoryController::update
-  PATCH    /admin/categories/{cat}/deact.   admin.categories.deact.   auth, active         CategoryController::deactivate
+  GET      /admin/categories                admin.categories.index    auth,auth.session,active    CategoryController::index
+  GET      /admin/categories/create         admin.categories.create   auth,auth.session,active    CategoryController::create
+  POST     /admin/categories                admin.categories.store    auth,auth.session,active    CategoryController::store
+  GET      /admin/categories/{cat}/edit     admin.categories.edit     auth,auth.session,active    CategoryController::edit
+  PUT      /admin/categories/{cat}          admin.categories.update   auth,auth.session,active    CategoryController::update
+  PATCH    /admin/categories/{cat}/deact.   admin.categories.deact.   auth,auth.session,active    CategoryController::deactivate
 
   ── Master Data: UoM (Module 02) ─────────────────────────────────────────────────────────────────────────────────
-  GET      /admin/uoms                      admin.uoms.index          auth, active         UomController::index
-  GET      /admin/uoms/create               admin.uoms.create         auth, active         UomController::create
-  POST     /admin/uoms                      admin.uoms.store          auth, active         UomController::store
-  GET      /admin/uoms/{uom}/edit           admin.uoms.edit           auth, active         UomController::edit
-  PUT      /admin/uoms/{uom}                admin.uoms.update         auth, active         UomController::update
+  GET      /admin/uoms                      admin.uoms.index          auth,auth.session,active    UomController::index
+  GET      /admin/uoms/create               admin.uoms.create         auth,auth.session,active    UomController::create
+  POST     /admin/uoms                      admin.uoms.store          auth,auth.session,active    UomController::store
+  GET      /admin/uoms/{uom}/edit           admin.uoms.edit           auth,auth.session,active    UomController::edit
+  PUT      /admin/uoms/{uom}                admin.uoms.update         auth,auth.session,active    UomController::update
+  PATCH    /admin/uoms/{uom}/deactivate     admin.uoms.deactivate     auth,auth.session,active    UomController::deactivate
 
   ── Master Data: Item/SKU (Module 02) ────────────────────────────────────────────────────────────────────────────
-  GET      /admin/items/import              admin.items.import-form   auth, active         ItemController::importForm
-  POST     /admin/items/import             admin.items.import        auth, active         ItemController::import
-  GET      /admin/items                     admin.items.index         auth, active         ItemController::index
-  GET      /admin/items/create              admin.items.create        auth, active         ItemController::create
-  POST     /admin/items                     admin.items.store         auth, active         ItemController::store
-  GET      /admin/items/{item}              admin.items.show          auth, active         ItemController::show
-  GET      /admin/items/{item}/edit         admin.items.edit          auth, active         ItemController::edit
-  PUT      /admin/items/{item}              admin.items.update        auth, active         ItemController::update
-  PATCH    /admin/items/{item}/deactivate   admin.items.deactivate    auth, active         ItemController::deactivate
+  GET      /admin/items/import              admin.items.import-form   auth,auth.session,active    ItemController::importForm
+  POST     /admin/items/import              admin.items.import        auth,auth.session,active    ItemController::import
+  GET      /admin/items                     admin.items.index         auth,auth.session,active    ItemController::index
+  GET      /admin/items/create              admin.items.create        auth,auth.session,active    ItemController::create
+  POST     /admin/items                     admin.items.store         auth,auth.session,active    ItemController::store
+  GET      /admin/items/{item}              admin.items.show          auth,auth.session,active    ItemController::show
+  GET      /admin/items/{item}/edit         admin.items.edit          auth,auth.session,active    ItemController::edit
+  PUT      /admin/items/{item}              admin.items.update        auth,auth.session,active    ItemController::update
+  PATCH    /admin/items/{item}/deactivate   admin.items.deactivate    auth,auth.session,active    ItemController::deactivate
 
   GET      /api/user                        -                         auth:sanctum         Closure (inline)
 
@@ -1060,6 +1075,7 @@ RetailControl/
        - role     : super_admin
        - branch   : null (global)
        - is_active: true
+     *Catatan: DatabaseSeeder akan melakukan Truncate pada tabel audit_logs setelah selesai, agar tidak ada sampah log.*
 
   ── Module 02 ────────────────────────────────────────────────────────────────
 
@@ -1087,30 +1103,34 @@ RetailControl/
 ================================================================================
 
   ┌───────────────────────────────────────────────────────────────────────┐
-  │ MEASURE                         IMPLEMENTASI                         │
+  │ MEASURE                         IMPLEMENTASI                          │
   ├───────────────────────────────────────────────────────────────────────┤
-  │ Password Hashing                Bcrypt (via Laravel 'hashed' cast)   │
-  │ Password Strength               Min 8 char, huruf + angka (store)   │
-  │ Session Fixation Prevention     session()->regenerate() saat login   │
-  │ Session Invalidation            session()->invalidate() saat logout  │
-  │ CSRF Token Regeneration         regenerateToken() saat logout        │
-  │ CSRF Protection                 VerifyCsrfToken middleware           │
-  │ Active Account Check            EnsureUserIsActive middleware        │
-  │ Permission-Based Authorization  RequirePermission middleware         │
-  │ Policy-Based Authorization      UserPolicy via Gate::authorize()     │
-  │ Super Admin Protection          Tidak bisa dihapus/diedit oleh lain  │
+  │ Password Hashing                Bcrypt (via Laravel 'hashed' cast)    │
+  │ Password Strength               Min 8 char, huruf + angka (store)     │
+  │ Database Session Storage        Sesi handal dan aman di database      │
+  │ AuthenticateSession Middleware  Validasi sesi aktif & timeout         │
+  │ Session Fixation Prevention     session()->regenerate() saat login    │
+  │ Session Invalidation            session()->invalidate() saat logout   │
+  │ CSRF Token Regeneration         regenerateToken() saat logout         │
+  │ CSRF Protection                 VerifyCsrfToken middleware            │
+  │ Active Account Check            EnsureUserIsActive middleware         │
+  │ Permission-Based Authorization  RequirePermission middleware          │
+  │ Policy-Based Authorization      UserPolicy via Gate::authorize()      │
+  │ Super Admin Protection          Tidak bisa dihapus/diedit oleh lain   │
   │ Self-Delete Prevention          User tidak bisa menghapus diri sendiri│
-  │ Sensitive Data Exclusion        password & remember_token tidak      │
-  │                                 dicatat di audit log                 │
-  │ Immutable Audit Log             AuditLog menolak update & delete     │
-  │ Soft Delete                     User tidak benar-benar dihapus       │
-  │ Input Validation                Form Request dengan rules ketat      │
-  │ Username Format                 Hanya lowercase, angka, underscore   │
-  │ Unique Constraint (soft-aware)  Unique check mengabaikan deleted     │
-  │ IP & User-Agent Logging         Dicatat di setiap audit log entry    │
-  │ Dual Login Support              Login via email ATAU username        │
-  │ Eager-Load Permissions          Permissions di-load saat login       │
-  │                                 (menghindari N+1 query)              │
+  │ Sensitive Data Exclusion        password & remember_token tidak       │
+  │                                 dicatat di audit log                  │
+  │ Immutable Audit Log             AuditLog menolak update & delete      │
+  │ Soft Delete                     User tidak benar-benar dihapus        │
+  │ Input Validation                Form Request dengan rules ketat       │
+  │ Username Format                 Hanya lowercase, angka, underscore    │
+  │ Unique Constraint (soft-aware)  Unique check mengabaikan deleted      │
+  │ IP & User-Agent Logging         Dicatat di setiap audit log entry     │
+  │ Dual Login Support              Login via email ATAU username         │
+  │ Eager-Load Permissions          Permissions di-load saat login        │
+  │                                 (menghindari N+1 query)               │
+  │ Login Rate Limiting             throttle:5,1 (5 percobaan/menit)      │
+  │                                 pada POST /login via middleware       │
   └───────────────────────────────────────────────────────────────────────┘
 
 
@@ -1123,17 +1143,17 @@ RetailControl/
      │                    │                       │                      │
      │  GET /login        │                       │                      │
      │───────────────────>│                       │                      │
-     │                    │ guest middleware       │                      │
-     │                    │ (cek belum login)      │                      │
+     │                    │ guest middleware      │                      │
+     │                    │ (cek belum login)     │                      │
      │  <── HTML form ────│                       │                      │
      │                    │                       │                      │
      │  POST /login       │                       │                      │
      │  (login, password) │                       │                      │
      │───────────────────>│                       │                      │
-     │                    │  LoginRequest          │                      │
-     │                    │  (validate input)      │                      │
+     │                    │  LoginRequest         │                      │
+     │                    │  (validate input)     │                      │
      │                    │                       │                      │
-     │                    │  attempt(login,pw,rem) │                      │
+     │                    │  attempt(login,pw,rem)│                      │
      │                    │──────────────────────>│                      │
      │                    │                       │  findUser(login)     │
      │                    │                       │  Hash::check(pw)     │
@@ -1144,17 +1164,17 @@ RetailControl/
      │                    │                       │─────────────────────>│
      │                    │                       │                      │ INSERT
      │                    │                       │                      │ audit_logs
-     │                    │                       │  <─── AuditLog ──── │
+     │                    │                       │  <─── AuditLog ────  │
      │                    │  <── return $user ────│                      │
      │                    │                       │                      │
      │                    │  session()->regenerate()                     │
-     │                    │  redirect /dashboard   │                      │
+     │                    │  redirect /dashboard  │                      │
      │  <── 302 ──────────│                       │                      │
      │                    │                       │                      │
      │  GET /dashboard    │                       │                      │
      │───────────────────>│                       │                      │
-     │                    │ auth middleware (OK)   │                      │
-     │                    │ active middleware (OK) │                      │
+     │                    │ auth middleware (OK)  │                      │
+     │                    │ active middleware (OK)│                      │
      │  <── Dashboard ────│                       │                      │
 
 
@@ -1173,6 +1193,9 @@ RetailControl/
      branch_id di users tetap BIGINT tanpa foreign key ke tabel branches.
      FK akan ditambahkan pada modul yang memerlukan data per-cabang
      (misalnya Inventory / Module 04).
+     CATATAN: Model stub Branch.php sudah dibuat (app/Models/Branch.php)
+     agar User::branch() tidak throw "Class not found". Model ini hanya
+     berisi fillable dan relasi minimal; tabel dan migration dibuat nanti.
 
   3. AUDIT LOG IMMUTABILITY
      audit_logs dirancang sebagai tabel append-only. Ini dijaga oleh:

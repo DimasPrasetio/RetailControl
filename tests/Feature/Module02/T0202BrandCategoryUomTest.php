@@ -43,22 +43,22 @@ class T0202BrandCategoryUomTest extends TestCase
 
         $kasirRoleId = Role::where('name', 'kasir')->value('id');
         $this->kasir = User::create([
-            'name'      => 'Kasir Brand Test',
-            'username'  => 'kasir_brand_test',
-            'email'     => null,
-            'password'  => bcrypt('Password1'),
-            'role_id'   => $kasirRoleId,
+            'name' => 'Kasir Brand Test',
+            'username' => 'kasir_brand_test',
+            'email' => null,
+            'password' => bcrypt('Password1'),
+            'role_id' => $kasirRoleId,
             'branch_id' => 1,
             'is_active' => true,
         ]);
 
         $adminRoleId = Role::where('name', 'admin_cabang')->value('id');
         $this->adminCabang = User::create([
-            'name'      => 'Admin Brand Test',
-            'username'  => 'admin_brand_test',
-            'email'     => null,
-            'password'  => bcrypt('Password1'),
-            'role_id'   => $adminRoleId,
+            'name' => 'Admin Brand Test',
+            'username' => 'admin_brand_test',
+            'email' => null,
+            'password' => bcrypt('Password1'),
+            'role_id' => $adminRoleId,
             'branch_id' => 1,
             'is_active' => true,
         ]);
@@ -71,7 +71,7 @@ class T0202BrandCategoryUomTest extends TestCase
     {
         $this->actingAs($this->superAdmin)
             ->post(route('admin.brands.store'), [
-                'name'      => 'Merk Baru Test',
+                'name' => 'Merk Baru Test',
                 'is_active' => 1,
             ])
             ->assertRedirect(route('admin.brands.index'));
@@ -80,9 +80,9 @@ class T0202BrandCategoryUomTest extends TestCase
 
         $brand = Brand::where('name', 'Merk Baru Test')->firstOrFail();
         $this->assertDatabaseHas('audit_logs', [
-            'action'         => 'create',
+            'action' => 'create',
             'auditable_type' => Brand::class,
-            'auditable_id'   => $brand->id,
+            'auditable_id' => $brand->id,
         ]);
     }
 
@@ -93,7 +93,7 @@ class T0202BrandCategoryUomTest extends TestCase
 
         $this->actingAs($this->superAdmin)
             ->post(route('admin.brands.store'), [
-                'name'      => 'Merk Duplikat',
+                'name' => 'Merk Duplikat',
                 'is_active' => 1,
             ])
             ->assertSessionHasErrors('name');
@@ -104,7 +104,7 @@ class T0202BrandCategoryUomTest extends TestCase
     {
         $this->actingAs($this->kasir)
             ->post(route('admin.brands.store'), [
-                'name'      => 'Merk Kasir',
+                'name' => 'Merk Kasir',
                 'is_active' => 1,
             ])
             ->assertForbidden();
@@ -125,13 +125,13 @@ class T0202BrandCategoryUomTest extends TestCase
 
         $this->actingAs($this->superAdmin)
             ->put(route('admin.brands.update', $brand), [
-                'name'      => 'Merk Diperbarui',
+                'name' => 'Merk Diperbarui',
                 'is_active' => 1,
             ])
             ->assertRedirect(route('admin.brands.index'));
 
         $this->assertDatabaseHas('brands', [
-            'id'   => $brand->id,
+            'id' => $brand->id,
             'name' => 'Merk Diperbarui',
         ]);
     }
@@ -146,14 +146,14 @@ class T0202BrandCategoryUomTest extends TestCase
             ->assertRedirect(route('admin.brands.index'));
 
         $this->assertDatabaseHas('brands', [
-            'id'        => $brand->id,
+            'id' => $brand->id,
             'is_active' => false,
         ]);
 
         $this->assertDatabaseHas('audit_logs', [
-            'action'         => 'update',
+            'action' => 'update',
             'auditable_type' => Brand::class,
-            'auditable_id'   => $brand->id,
+            'auditable_id' => $brand->id,
         ]);
     }
 
@@ -174,8 +174,8 @@ class T0202BrandCategoryUomTest extends TestCase
     {
         $this->actingAs($this->superAdmin)
             ->post(route('admin.categories.store'), [
-                'name'      => 'Kategori Test',
-                'code'      => 'KAT_TEST',
+                'name' => 'Kategori Test',
+                'code' => 'KAT_TEST',
                 'is_active' => 1,
             ])
             ->assertRedirect(route('admin.categories.index'));
@@ -193,8 +193,8 @@ class T0202BrandCategoryUomTest extends TestCase
 
         $this->actingAs($this->superAdmin)
             ->post(route('admin.categories.store'), [
-                'name'      => 'Kategori Dua',
-                'code'      => 'DUPKAT',
+                'name' => 'Kategori Dua',
+                'code' => 'DUPKAT',
                 'is_active' => 1,
             ])
             ->assertSessionHasErrors('code');
@@ -207,15 +207,15 @@ class T0202BrandCategoryUomTest extends TestCase
 
         $this->actingAs($this->superAdmin)
             ->post(route('admin.categories.store'), [
-                'name'      => 'Sub Kategori',
-                'code'      => 'SUB_KAT',
+                'name' => 'Sub Kategori',
+                'code' => 'SUB_KAT',
                 'parent_id' => $parent->id,
                 'is_active' => 1,
             ])
             ->assertRedirect(route('admin.categories.index'));
 
         $this->assertDatabaseHas('categories', [
-            'name'      => 'Sub Kategori',
+            'name' => 'Sub Kategori',
             'parent_id' => $parent->id,
         ]);
     }
@@ -225,8 +225,8 @@ class T0202BrandCategoryUomTest extends TestCase
     {
         $this->actingAs($this->kasir)
             ->post(route('admin.categories.store'), [
-                'name'      => 'Kategori Kasir',
-                'code'      => 'KAS_KAT',
+                'name' => 'Kategori Kasir',
+                'code' => 'KAS_KAT',
                 'is_active' => 1,
             ])
             ->assertForbidden();
@@ -250,7 +250,7 @@ class T0202BrandCategoryUomTest extends TestCase
             ->assertRedirect(route('admin.categories.index'));
 
         $this->assertDatabaseHas('categories', [
-            'id'        => $category->id,
+            'id' => $category->id,
             'is_active' => false,
         ]);
     }
@@ -317,9 +317,40 @@ class T0202BrandCategoryUomTest extends TestCase
             ->assertRedirect(route('admin.uoms.index'));
 
         $this->assertDatabaseHas('uoms', [
-            'id'   => $uom->id,
+            'id' => $uom->id,
             'name' => 'Nama Baru',
         ]);
+    }
+
+    /** @test */
+    public function super_admin_can_deactivate_a_uom(): void
+    {
+        $uom = Uom::create(['code' => 'DEACTUOM', 'name' => 'UoM Aktif', 'is_active' => true]);
+
+        $this->actingAs($this->superAdmin)
+            ->patch(route('admin.uoms.deactivate', $uom))
+            ->assertRedirect(route('admin.uoms.index'));
+
+        $this->assertDatabaseHas('uoms', [
+            'id' => $uom->id,
+            'is_active' => false,
+        ]);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'update',
+            'auditable_type' => Uom::class,
+            'auditable_id' => $uom->id,
+        ]);
+    }
+
+    /** @test */
+    public function kasir_cannot_deactivate_a_uom(): void
+    {
+        $uom = Uom::create(['code' => 'KASUOM', 'name' => 'UoM Kasir Test', 'is_active' => true]);
+
+        $this->actingAs($this->kasir)
+            ->patch(route('admin.uoms.deactivate', $uom))
+            ->assertForbidden();
     }
 
     /** @test */
@@ -328,7 +359,7 @@ class T0202BrandCategoryUomTest extends TestCase
         // Brand
         $this->actingAs($this->adminCabang)
             ->post(route('admin.brands.store'), [
-                'name'      => 'Merk Admin Cabang',
+                'name' => 'Merk Admin Cabang',
                 'is_active' => 1,
             ])
             ->assertRedirect(route('admin.brands.index'));
@@ -338,8 +369,8 @@ class T0202BrandCategoryUomTest extends TestCase
         // Category
         $this->actingAs($this->adminCabang)
             ->post(route('admin.categories.store'), [
-                'name'      => 'Kategori Admin Cabang',
-                'code'      => 'KAT_ADM',
+                'name' => 'Kategori Admin Cabang',
+                'code' => 'KAT_ADM',
                 'is_active' => 1,
             ])
             ->assertRedirect(route('admin.categories.index'));

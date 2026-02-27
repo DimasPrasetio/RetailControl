@@ -8,9 +8,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- TomSelect -->
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.4.1/dist/css/tom-select.default.min.css" rel="stylesheet">
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <!-- TomSelect JS -->
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.1/dist/js/tom-select.complete.min.js"></script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="h-full bg-gray-50 font-sans antialiased">
+<body class="h-full bg-gray-50 font-sans antialiased" x-data="{ sidebarOpen: false }">
 
 <div class="flex h-full" id="app-layout">
 
@@ -18,17 +26,19 @@
          SIDEBAR OVERLAY (mobile backdrop)
     ═══════════════════════════════════════════════════════════════════════════ --}}
     <div id="sidebar-overlay"
-         class="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm hidden lg:hidden"
-         onclick="toggleSidebar()">
+         class="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm lg:hidden"
+         x-show="sidebarOpen"
+         x-transition.opacity
+         @click="sidebarOpen = false"
+         style="display: none;">
     </div>
 
     {{-- ═══════════════════════════════════════════════════════════════════════
          SIDEBAR
     ═══════════════════════════════════════════════════════════════════════════ --}}
     <aside id="sidebar"
-           class="fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-slate-900
-                  -translate-x-full transition-transform duration-300 ease-in-out
-                  lg:static lg:translate-x-0">
+           class="fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-slate-900 transition-transform duration-300 ease-in-out lg:static lg:translate-x-0"
+           :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
 
         {{-- Logo --}}
         <div class="flex h-16 flex-shrink-0 items-center gap-3 border-b border-slate-700/60 px-5">
@@ -94,6 +104,69 @@
                 </a>
             @endif
 
+            {{-- ── Master Data ──────────────────────────────────────────────── --}}
+            @if(auth()->user()->hasPermission('items.view') || auth()->user()->hasPermission('brands.view') || auth()->user()->hasPermission('categories.view') || auth()->user()->hasPermission('uoms.view'))
+                <div class="px-3 pb-1 pt-5">
+                    <p class="text-xs font-semibold uppercase tracking-widest text-slate-500">Master Data</p>
+                </div>
+            @endif
+
+            @if(auth()->user()->hasPermission('items.view'))
+                <a href="{{ route('admin.items.index') }}"
+                   class="sidebar-link group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150
+                          {{ request()->routeIs('admin.items.*')
+                             ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                             : 'text-slate-400 hover:bg-slate-800 hover:text-white' }}">
+                    <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                    </svg>
+                    <span>Produk (SKU)</span>
+                </a>
+            @endif
+
+            @if(auth()->user()->hasPermission('brands.view'))
+                <a href="{{ route('admin.brands.index') }}"
+                   class="sidebar-link group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150
+                          {{ request()->routeIs('admin.brands.*')
+                             ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                             : 'text-slate-400 hover:bg-slate-800 hover:text-white' }}">
+                    <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                    </svg>
+                    <span>Brand</span>
+                </a>
+            @endif
+
+            @if(auth()->user()->hasPermission('categories.view'))
+                <a href="{{ route('admin.categories.index') }}"
+                   class="sidebar-link group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150
+                          {{ request()->routeIs('admin.categories.*')
+                             ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                             : 'text-slate-400 hover:bg-slate-800 hover:text-white' }}">
+                    <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                    </svg>
+                    <span>Kategori</span>
+                </a>
+            @endif
+
+            @if(auth()->user()->hasPermission('uoms.view'))
+                <a href="{{ route('admin.uoms.index') }}"
+                   class="sidebar-link group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150
+                          {{ request()->routeIs('admin.uoms.*')
+                             ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                             : 'text-slate-400 hover:bg-slate-800 hover:text-white' }}">
+                    <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/>
+                    </svg>
+                    <span>Satuan (UoM)</span>
+                </a>
+            @endif
+
             {{-- ── Placeholder items (modul berikutnya) ──────────────────────── --}}
             <div class="px-3 pb-1 pt-5">
                 <p class="text-xs font-semibold uppercase tracking-widest text-slate-500">Operasional</p>
@@ -151,13 +224,12 @@
         <header class="flex h-16 flex-shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4 sm:px-6">
 
             {{-- Hamburger (mobile) --}}
-            <button id="hamburger-btn"
-                    onclick="toggleSidebar()"
+            <button @click="sidebarOpen = !sidebarOpen"
                     class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 lg:hidden">
-                <svg id="hamburger-icon-open" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" x-show="!sidebarOpen">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
                 </svg>
-                <svg id="hamburger-icon-close" class="h-5 w-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" x-show="sidebarOpen" style="display: none;">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
             </button>
@@ -174,8 +246,8 @@
             </div>
 
             {{-- Right: user dropdown --}}
-            <div class="relative flex-shrink-0" id="user-menu-container">
-                <button onclick="toggleUserMenu()"
+            <div class="relative flex-shrink-0" id="user-menu-container" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
+                <button @click="userMenuOpen = !userMenuOpen"
                         class="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-100">
                     <div class="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-xs font-semibold text-white shadow-sm">
                         {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
@@ -183,17 +255,20 @@
                     <span class="hidden max-w-[120px] truncate font-medium sm:block">
                         {{ auth()->user()->name }}
                     </span>
-                    <svg class="h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-150" id="user-menu-chevron"
+                    <svg class="h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-150"
+                         :class="userMenuOpen ? 'rotate-180' : 'rotate-0'"
                          fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
                     </svg>
                 </button>
 
                 {{-- Dropdown --}}
-                <div id="user-menu-dropdown"
-                     class="absolute right-0 top-full z-50 mt-2 hidden w-56 rounded-xl bg-white shadow-xl ring-1 ring-black/5 focus:outline-none">
+                <div x-show="userMenuOpen"
+                     x-transition.origin.top.right
+                     class="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl bg-white shadow-xl ring-1 ring-black/5 focus:outline-none"
+                     style="display: none;">
                     <div class="border-b border-gray-100 px-4 py-3">
-                        <p class="text-xs text-gray-400">Masuk sebagai</p>
+                        <p class="text-xs text-gray-500">Masuk sebagai</p>
                         <p class="mt-0.5 truncate text-sm font-semibold text-gray-800">{{ auth()->user()->name }}</p>
                         <span class="mt-1 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                             {{ auth()->user()->role->name->label() }}
@@ -217,26 +292,29 @@
 
         </header>
 
-        {{-- Flash messages --}}
+        {{-- Flash messages (handled globally via SweetAlert2) --}}
         @if(session('success') || session('error'))
-            <div class="px-4 pt-4 sm:px-6">
-                @if(session('success'))
-                    <div class="mb-2 flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-                        <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-                        </svg>
-                        {{ session('success') }}
-                    </div>
-                @endif
-                @if(session('error'))
-                    <div class="mb-2 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                        <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                        {{ session('error') }}
-                    </div>
-                @endif
-            </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const Toast = Swal.mixin({
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 4000,
+                        timerProgressBar: true,
+                        didOpen: (toast) => {
+                            toast.onmouseenter = Swal.stopTimer;
+                            toast.onmouseleave = Swal.resumeTimer;
+                        }
+                    });
+                    @if(session('success'))
+                        Toast.fire({ icon: 'success', title: {!! json_encode(session('success')) !!} });
+                    @endif
+                    @if(session('error'))
+                        Toast.fire({ icon: 'error', title: {!! json_encode(session('error')) !!} });
+                    @endif
+                });
+            </script>
         @endif
 
         {{-- Page Content --}}
@@ -248,57 +326,45 @@
 </div>
 
 <script>
-    // ── Sidebar toggle ──────────────────────────────────────────────────────
-    let sidebarOpen = false;
-
-    function toggleSidebar() {
-        const sidebar  = document.getElementById('sidebar');
-        const overlay  = document.getElementById('sidebar-overlay');
-        const iconOpen = document.getElementById('hamburger-icon-open');
-        const iconClose= document.getElementById('hamburger-icon-close');
-
-        sidebarOpen = !sidebarOpen;
-
-        if (sidebarOpen) {
-            sidebar.classList.remove('-translate-x-full');
-            overlay.classList.remove('hidden');
-            iconOpen.classList.add('hidden');
-            iconClose.classList.remove('hidden');
-        } else {
-            sidebar.classList.add('-translate-x-full');
-            overlay.classList.add('hidden');
-            iconOpen.classList.remove('hidden');
-            iconClose.classList.add('hidden');
-        }
-    }
-
-    // ── User menu dropdown ──────────────────────────────────────────────────
-    function toggleUserMenu() {
-        const dropdown = document.getElementById('user-menu-dropdown');
-        const chevron  = document.getElementById('user-menu-chevron');
-        const isHidden = dropdown.classList.contains('hidden');
-
-        dropdown.classList.toggle('hidden');
-        chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-    }
-
-    // Close dropdown when clicking outside
-    document.addEventListener('click', function (e) {
-        const container = document.getElementById('user-menu-container');
-        const dropdown  = document.getElementById('user-menu-dropdown');
-        const chevron   = document.getElementById('user-menu-chevron');
-
-        if (container && !container.contains(e.target)) {
-            dropdown.classList.add('hidden');
-            chevron.style.transform = 'rotate(0deg)';
+    // Close sidebar on resize to tablet/desktop
+    window.addEventListener('resize', function () {
+        if (window.innerWidth >= 1024) {
+            // Re-sync alpine state if needed, though Tailwind handles lg:static
         }
     });
 
-    // Close sidebar on resize to desktop
-    window.addEventListener('resize', function () {
-        if (window.innerWidth >= 1024 && sidebarOpen) {
-            toggleSidebar();
-        }
+    // Global helper for SweetAlert confirmations
+    window.confirmAction = function(e, form, title = 'Konfirmasi', msg = 'Yakin ingin melanjutkan aksi ini?') {
+        e.preventDefault();
+        Swal.fire({
+            title: title,
+            text: msg,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#9ca3af',
+            confirmButtonText: 'Ya, Lanjutkan',
+            cancelButtonText: 'Batal',
+            reverseButtons: true
+        }).then((result) => {
+            if (result.isConfirmed) {
+                form.submit();
+            }
+        });
+    };
+    
+    // Global initialize TomSelect on elements with class 'tom-select-init'
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.tom-select-init').forEach(function(el) {
+            new TomSelect(el, {
+                create: false,
+                sortField: {
+                    field: "text",
+                    direction: "asc"
+                },
+                dropdownParent: 'body'
+            });
+        });
     });
 </script>
 

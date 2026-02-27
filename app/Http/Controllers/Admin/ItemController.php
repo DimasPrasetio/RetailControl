@@ -40,11 +40,30 @@ class ItemController extends Controller
             });
         }
 
-        $items      = $query->orderBy('name')->paginate(30)->withQueryString();
-        $brands     = Brand::where('is_active', true)->orderBy('name')->get();
+        $items = $query->orderBy('name')->paginate(10)->withQueryString();
+        $brands = Brand::where('is_active', true)->orderBy('name')->get();
         $categories = Category::where('is_active', true)->orderBy('name')->get();
 
-        return view('admin.items.index', compact('items', 'brands', 'categories'));
+        // Build brand↔category relationship map from existing items for cascading filter
+        $pairs = Item::select('brand_id', 'category_id')
+            ->whereNotNull('brand_id')
+            ->whereNotNull('category_id')
+            ->distinct()
+            ->get();
+
+        $brandToCategories = [];
+        $categoryToBrands = [];
+        foreach ($pairs as $p) {
+            $brandToCategories[$p->brand_id][] = $p->category_id;
+            $categoryToBrands[$p->category_id][] = $p->brand_id;
+        }
+        // Deduplicate
+        $brandToCategories = array_map('array_unique', $brandToCategories);
+        $categoryToBrands = array_map('array_unique', $categoryToBrands);
+
+        $filterMap = compact('brandToCategories', 'categoryToBrands');
+
+        return view('admin.items.index', compact('items', 'brands', 'categories', 'filterMap'));
     }
 
     public function create(): View
@@ -59,8 +78,8 @@ class ItemController extends Controller
         Gate::authorize('create', Item::class);
 
         $data = $this->validated($request);
-        $data['attributes_json']    = $this->parseJson($request->input('attributes_json'));
-        $data['custom_fields_json'] = $this->parseJson($request->input('custom_fields_json'));
+        $data['attributes_json'] = $this->parseKeyValue($request->input('attr_keys'), $request->input('attr_values'));
+        $data['custom_fields_json'] = $this->parseKeyValue($request->input('custom_keys'), $request->input('custom_values'));
 
         Item::create($data);
 
@@ -75,7 +94,7 @@ class ItemController extends Controller
         $auditLogs = AuditLog::where('auditable_type', Item::class)
             ->where('auditable_id', $item->id)
             ->orderByDesc('created_at')
-            ->paginate(20);
+            ->paginate(10);
 
         $item->load(['brand', 'category', 'baseUom', 'purchaseUom', 'barcodes', 'priceListItems.priceList']);
 
@@ -94,8 +113,8 @@ class ItemController extends Controller
         Gate::authorize('update', $item);
 
         $data = $this->validated($request, $item);
-        $data['attributes_json']    = $this->parseJson($request->input('attributes_json'));
-        $data['custom_fields_json'] = $this->parseJson($request->input('custom_fields_json'));
+        $data['attributes_json'] = $this->parseKeyValue($request->input('attr_keys'), $request->input('attr_values'));
+        $data['custom_fields_json'] = $this->parseKeyValue($request->input('custom_keys'), $request->input('custom_values'));
 
         $item->update($data);
 
@@ -130,7 +149,7 @@ class ItemController extends Controller
             'excel_file' => ['required', 'file', 'mimes:xlsx,xls', 'max:20480'],
         ]);
 
-        $path   = $request->file('excel_file')->getRealPath();
+        $path = $request->file('excel_file')->getRealPath();
         $result = $service->import($path);
 
         return redirect()->route('admin.items.import-form')
@@ -142,9 +161,9 @@ class ItemController extends Controller
     private function formData(): array
     {
         return [
-            'brands'     => Brand::where('is_active', true)->orderBy('name')->get(),
+            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
             'categories' => Category::where('is_active', true)->orderBy('name')->get(),
-            'uoms'       => Uom::orderBy('code')->get(),
+            'uoms' => Uom::orderBy('code')->get(),
         ];
     }
 
@@ -158,25 +177,33 @@ class ItemController extends Controller
         }
 
         return $request->validate([
-            'sku_code'        => $skuRule,
-            'name'            => ['required', 'string', 'max:255'],
-            'brand_id'        => ['nullable', 'exists:brands,id'],
-            'category_id'     => ['nullable', 'exists:categories,id'],
-            'base_uom_id'     => ['required', 'exists:uoms,id'],
+            'sku_code' => $skuRule,
+            'name' => ['required', 'string', 'max:255'],
+            'brand_id' => ['nullable', 'exists:brands,id'],
+            'category_id' => ['nullable', 'exists:categories,id'],
+            'base_uom_id' => ['required', 'exists:uoms,id'],
             'purchase_uom_id' => ['nullable', 'exists:uoms,id'],
-            'pack_qty'        => ['numeric', 'min:0.0001'],
-            'tax_included'    => ['boolean'],
-            'is_active'       => ['boolean'],
+            'pack_qty' => ['numeric', 'min:0.0001'],
+            'tax_included' => ['boolean'],
+            'is_active' => ['boolean'],
         ]);
     }
 
-    private function parseJson(?string $raw): ?array
+    private function parseKeyValue(?array $keys, ?array $values): ?array
     {
-        if (blank($raw)) {
+        if (empty($keys) || empty($values)) {
             return null;
         }
-        $decoded = json_decode($raw, true);
 
-        return is_array($decoded) ? $decoded : null;
+        $result = [];
+        foreach ($keys as $i => $key) {
+            $key = trim((string) $key);
+            $val = trim((string) ($values[$i] ?? ''));
+            if ($key !== '') {
+                $result[$key] = $val;
+            }
+        }
+
+        return !empty($result) ? $result : null;
     }
 }

@@ -15,7 +15,7 @@ class CategoryController extends Controller
     {
         Gate::authorize('viewAny', Category::class);
 
-        $categories = Category::with('parent')->orderBy('name')->paginate(30);
+        $categories = Category::with('parent')->orderBy('name')->paginate(10);
 
         return view('admin.categories.index', compact('categories'));
     }
@@ -35,8 +35,8 @@ class CategoryController extends Controller
 
         $data = $request->validate([
             'parent_id' => ['nullable', 'exists:categories,id'],
-            'name'      => ['required', 'string', 'max:100'],
-            'code'      => ['nullable', 'string', 'max:20', 'unique:categories,code'],
+            'name' => ['required', 'string', 'max:100'],
+            'code' => ['nullable', 'string', 'max:20', 'unique:categories,code'],
             'is_active' => ['boolean'],
         ]);
 
@@ -65,9 +65,13 @@ class CategoryController extends Controller
 
         $data = $request->validate([
             'parent_id' => ['nullable', 'exists:categories,id'],
-            'name'      => ['required', 'string', 'max:100'],
-            'code'      => ['nullable', 'string', 'max:20',
-                            \Illuminate\Validation\Rule::unique('categories', 'code')->ignore($category->id)],
+            'name' => ['required', 'string', 'max:100'],
+            'code' => [
+                'nullable',
+                'string',
+                'max:20',
+                \Illuminate\Validation\Rule::unique('categories', 'code')->ignore($category->id)
+            ],
             'is_active' => ['boolean'],
         ]);
 

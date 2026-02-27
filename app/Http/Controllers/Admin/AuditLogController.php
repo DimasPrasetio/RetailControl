@@ -41,8 +41,17 @@ class AuditLogController extends Controller
             $query->whereDate('created_at', '<=', $request->input('date_to'));
         }
 
-        $logs = $query->paginate(50)->withQueryString();
+        $logs = $query->paginate(10)->withQueryString();
 
-        return view('admin.audit-logs.index', compact('logs'));
+        $auditableTypes = [
+            \App\Models\User::class,
+            \App\Models\Role::class,
+            \App\Models\Item::class,
+            \App\Models\Category::class,
+            \App\Models\Brand::class,
+            \App\Models\Uom::class,
+        ];
+
+        return view('admin.audit-logs.index', compact('logs', 'auditableTypes'));
     }
 }
