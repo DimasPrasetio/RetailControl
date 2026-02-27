@@ -7,10 +7,13 @@ use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Hash;
 
 class LoginService
 {
+    private const REMEMBER_DAYS = 7;
+
     /**
      * Attempt login dengan email ATAU username.
      *
@@ -28,7 +31,13 @@ class LoginService
             throw new AuthenticationException('Akun Anda tidak aktif. Hubungi administrator.');
         }
 
-        Auth::login($user, $remember);
+        // Auth::login($user, true) secara default membuat remember cookie "forever" (5 tahun).
+        // Kita pass false agar tidak membuat cookie forever, lalu kita queue cookie 7-hari sendiri.
+        Auth::login($user, false);
+
+        if ($remember) {
+            $this->queueRememberCookie7Days($user);
+        }
 
         AuditLogger::logAuth(AuditActionEnum::Login, $user);
 
@@ -47,6 +56,43 @@ class LoginService
 
         request()->session()->invalidate();
         request()->session()->regenerateToken();
+    }
+
+    /**
+     * Buat dan queue remember cookie dengan expiry tepat 7 hari.
+     *
+     * Laravel Auth::login($user, true) membuat cookie "forever" (5 tahun).
+     * Karena kita memanggil Auth::login($user, false), kita perlu:
+     * 1. Generate remember token sendiri (sama seperti yang dilakukan Laravel internaly).
+     * 2. Queue cookie dengan durasi 7 hari.
+     *
+     * Format recaller value: "{id}|{remember_token}|{password_hash}"
+     * (sama dengan yang digunakan Laravel SessionGuard)
+     */
+    private function queueRememberCookie7Days(User $user): void
+    {
+        // Generate dan simpan remember token ke DB (sama seperti Laravel lakukan)
+        $token = \Illuminate\Support\Str::random(60);
+        $user->setRememberToken($token);
+        $user->save();
+
+        // Bangun nilai recaller (format identik dengan Laravel SessionGuard)
+        $recallerValue = $user->getAuthIdentifier()
+            . '|' . $token
+            . '|' . $user->getAuthPassword();
+
+        Cookie::queue(
+            Cookie::make(
+                name    : Auth::guard('web')->getRecallerName(),
+                value   : $recallerValue,
+                minutes : self::REMEMBER_DAYS * 24 * 60,
+                path    : config('session.path', '/'),
+                domain  : config('session.domain'),
+                secure  : config('session.secure', false),
+                httpOnly: true,
+                sameSite: config('session.same_site', 'lax'),
+            )
+        );
     }
 
     /**

@@ -95,6 +95,8 @@
                     <input type="checkbox"
                            id="remember"
                            name="remember"
+                           value="1"
+                           {{ old('remember') ? 'checked' : '' }}
                            class="h-4 w-4 rounded border-white/20 bg-white/5 text-blue-500 focus:ring-blue-400/30">
                     <label for="remember" class="ml-2.5 text-sm text-blue-200/80">
                         Ingat saya selama 7 hari
