@@ -1,0 +1,895 @@
+PRD – MODULE 03: MASTER CABANG & GUDANG
+Digitalisasi Toko Material Multi Cabang
+Modul ke-3 dalam urutan implementasi RetailControl
+
+Versi       : 2.0
+Status      : Final – Siap Implementasi
+Pengganti   : PRD v1.0 (Draft)
+Tgl Update  : 2026-02-28
+Dibuat oleh : Analisis terhadap kode aktual Module 01 & 02
+
+URUTAN MODUL (DIPERBARUI):
+  01 mod-01-access            → SELESAI
+  02 mod-02-product-management → SELESAI
+  03 mod-03-branch-warehouse   → MODUL INI  ← branch & gudang
+  04 mod-04-pricing            → (sebelumnya 03)
+  05 mod-05-inventory          → (sebelumnya 04)
+  06 mod-06-pos                → dst.
+
+Catatan perubahan urutan:
+  Branch & Gudang HARUS ada sebelum Pricing dan Inventory karena:
+  - price_lists.branch_id sudah ada di DB, menunggu FK ke tabel ini
+  - Inventory Core akan menyimpan stok per (branch_id, warehouse_id)
+  - POS perlu branch dan default warehouse aktif
+
+──────────────────────────────────────────────────────────────────────────────
+1) LATAR BELAKANG DAN MASALAH
+──────────────────────────────────────────────────────────────────────────────
+Sistem sudah memiliki (dari Module 01 & 02):
+- User & Access Control berbasis cabang: users.branch_id sudah ada di tabel,
+  relasi User::branch() sudah terdefinisi, BranchScoped trait sudah ada.
+- Master Product (SKU) terpusat: items, brands, categories, uoms, price_lists.
+  Kolom price_lists.branch_id sudah ada, menunggu FK ke tabel branches.
+- Branch stub model (app/Models/Branch.php) sudah ada agar User::branch()
+  tidak throw "Class not found" — ini adalah placeholder yang akan digantikan
+  oleh implementasi penuh pada modul ini.
+
+Masalah yang belum terselesaikan:
+- Tabel 'branches' belum ada → users.branch_id dan price_lists.branch_id
+  tidak punya FK constraint → data bisa tidak konsisten.
+- Tidak ada sumber kebenaran untuk daftar cabang aktif, kode cabang, alamat.
+- Tidak ada struktur gudang per cabang → Inventory Core tidak punya anchor.
+- StoreUserRequest/UpdateUserRequest belum validasi 'exists:branches,id'
+  karena tabel belum ada.
+
+──────────────────────────────────────────────────────────────────────────────
+2) TUJUAN
+──────────────────────────────────────────────────────────────────────────────
+1) Mewujudkan tabel 'branches' sebagai sumber kebenaran master cabang.
+2) Mewujudkan tabel 'warehouses' sebagai lokasi penyimpanan stok per cabang.
+3) Menambahkan FK constraint yang tertunda:
+   - users.branch_id      → branches.id
+   - price_lists.branch_id → branches.id
+4) Memperketat validasi branch_id di StoreUserRequest & UpdateUserRequest.
+5) Menggantikan Branch stub model dengan implementasi penuh.
+6) Menjadi fondasi untuk Module 04 (Pricing override cabang) dan
+   Module 05 (Inventory Core dengan anchor branch+warehouse).
+
+──────────────────────────────────────────────────────────────────────────────
+3) NON-TUJUAN (OUT OF SCOPE)
+──────────────────────────────────────────────────────────────────────────────
+- Transfer stok antar gudang/cabang (di Module 05 Inventory Core).
+- Pengelolaan lokasi rak/bin level detail.
+- Approval workflow berlapis.
+- Multi-entity consolidation (PT berbeda).
+- Integrasi peta, geofencing, penjadwalan shift.
+- Pricing override per cabang (di Module 04 Pricing).
+- Modifikasi logika existing Module 01 (RBAC, login, audit) selain
+  memperketat validasi branch_id.
+- Modifikasi logika existing Module 02 (SKU, import Excel) selain
+  menambahkan FK pada price_lists.branch_id.
+
+──────────────────────────────────────────────────────────────────────────────
+4) PEMANGKU KEPENTINGAN DAN PENGGUNA
+──────────────────────────────────────────────────────────────────────────────
+Role yang sudah terdefinisi di RoleEnum.php (TIDAK berubah):
+
+  Enum             Label           isGlobal()   requiresBranch()
+  ───────────────  ──────────────  ──────────   ────────────────
+  super_admin      Super Admin     true         false
+  owner            Owner           true         false
+  admin_cabang     Admin Cabang    false        true
+  kasir            Kasir           false        true
+  accounting       Accounting      false        true
+
+  Global (super_admin, owner) → akses semua cabang (branch_id = NULL)
+  Non-global (admin_cabang, kasir, accounting) → dibatasi ke cabangnya
+
+──────────────────────────────────────────────────────────────────────────────
+5) RUANG LINGKUP FITUR
+──────────────────────────────────────────────────────────────────────────────
+
+5.1 Master Cabang (Branch)
+
+Data wajib:
+  - branch_code  : string, unique global, uppercase, max 20 char
+                   CATATAN: branch stub saat ini punya kolom 'code' bukan
+                   'branch_code'. Migration baru HARUS menggunakan 'branch_code'.
+                   Branch model fillable akan diupdate (lihat bagian 10).
+  - name         : string, required
+  - is_active    : boolean, default true
+
+Data opsional:
+  - address      : text, nullable
+  - phone        : string max 20, nullable
+  - timezone     : string, nullable, default 'Asia/Jakarta' (diisi saat create)
+  - notes        : text, nullable
+  - metadata_json: JSON, nullable (cadangan untuk extensibilitas masa depan)
+
+Aturan bisnis:
+  - branch_code tidak bisa diubah setelah dibuat (readonly di form setelah
+    create, kecuali super_admin dengan konfirmasi eksplisit).
+  - Cabang nonaktif:
+    * Tidak bisa dipilih untuk user baru (validasi di StoreUserRequest)
+    * Tidak bisa dipakai untuk transaksi/stok baru (di module berikutnya)
+    * User yang sudah terikat ke cabang nonaktif: tetap ada, ditampilkan
+      warning di user list, akses transaksi dibatasi di module berikutnya
+    * Data historis tetap bisa dibaca (audit trail)
+  - Tidak ada hard delete; hanya deactivate/reactivate.
+  - Saat branch baru dibuat, sistem OTOMATIS membuat 1 warehouse default
+    (lihat 5.2 Aturan otomatis).
+
+5.2 Master Gudang per Cabang (Warehouse)
+
+Data wajib:
+  - warehouse_code : string, UNIQUE GLOBAL (Opsi A), max 30 char
+                     Format auto-generated saat create branch: {BRANCH_CODE}-MAIN
+                     Contoh: JKT-MAIN, BDG-MAIN
+  - branch_id      : FK → branches.id, required
+  - name           : string, required
+  - is_active      : boolean, default true
+
+Data opsional:
+  - type           : enum (MAIN | SECONDARY | RETURNS), nullable
+                     Default MAIN untuk gudang yang dibuat otomatis
+  - notes          : text, nullable
+  - metadata_json  : JSON, nullable
+
+Aturan bisnis:
+  - Setiap cabang minimal memiliki 1 gudang MAIN (dibuat otomatis).
+  - Gudang nonaktif tidak bisa dipakai untuk transaksi/stock movement baru
+    (enforcement di module Inventory dan POS, bukan di modul ini).
+  - Tidak ada hard delete; hanya deactivate/reactivate.
+
+Aturan otomatis pembuatan default warehouse:
+  - Trigger: setelah Branch berhasil dibuat (model event 'created' atau
+    di BranchController::store() setelah $branch->save()).
+  - Data default:
+      warehouse_code = "{$branch->branch_code}-MAIN"
+      name           = "Gudang Utama"
+      type           = "MAIN"
+      is_active      = true
+      branch_id      = $branch->id
+
+5.3 Permission Baru (8 permission)
+
+Ditambahkan ke PermissionSeeder dan RolePermissionSeeder.
+Konvensi slug konsisten dengan yang sudah ada (noun.verb).
+
+  Slug                    Nama Tampilan
+  ──────────────────────  ──────────────────────────
+  branches.view           Lihat Daftar Cabang
+  branches.create         Tambah Cabang
+  branches.update         Edit Cabang
+  branches.deactivate     Nonaktifkan Cabang
+  warehouses.view         Lihat Daftar Gudang
+  warehouses.create       Tambah Gudang
+  warehouses.update       Edit Gudang
+  warehouses.deactivate   Nonaktifkan Gudang
+
+Total permission setelah modul ini: 38 (existing) + 8 (baru) = 46 permission.
+
+5.4 Mapping Role → Permission (FINAL, tidak ambigu)
+
+  Permission              super  owner  adm_cab  kasir  accounting
+  ──────────────────────  ─────  ─────  ───────  ─────  ──────────
+  branches.view           ✓      ✓      ✓        ✓      ✓
+  branches.create         ✓      -      -        -      -
+  branches.update         ✓      -      -        -      -
+  branches.deactivate     ✓      -      -        -      -
+  warehouses.view         ✓      ✓      ✓        ✓      ✓
+  warehouses.create       ✓      -      ✓        -      -
+  warehouses.update       ✓      -      ✓        -      -
+  warehouses.deactivate   ✓      -      ✓        -      -
+
+  Rasional:
+  - super_admin: bypass permission check (sudah ada di User::hasPermission())
+    tapi tetap di-seed untuk konsistensi.
+  - owner: read-only global — konsisten dengan pola existing (hanya .view).
+  - admin_cabang: bisa kelola warehouse cabangnya, TIDAK bisa buat/nonaktifkan
+    cabang (itu wewenang super_admin). Ini mencegah admin cabang membuat cabang
+    tanpa sepengetahuan pemilik sistem.
+  - kasir: hanya view (butuh info gudang untuk keperluan POS nanti).
+  - accounting: hanya view (butuh info cabang untuk filter laporan nanti).
+
+5.5 Audit Log (Append-only, menggunakan infrastruktur existing)
+
+Infrastruktur audit_logs + Auditable trait sudah ada dari Module 01.
+Branch dan Warehouse cukup menggunakan trait Auditable — tidak perlu
+kode tambahan untuk infrastruktur audit.
+
+Peristiwa yang otomatis tercatat via Auditable trait:
+  - create branch     → action: create,         auditable: App\Models\Branch
+  - update branch     → action: update,         auditable: App\Models\Branch
+  - deactivate branch → action: status_change,  auditable: App\Models\Branch
+  - reactivate branch → action: status_change,  auditable: App\Models\Branch
+  - create warehouse  → action: create,         auditable: App\Models\Warehouse
+  - update warehouse  → action: update,         auditable: App\Models\Warehouse
+  - deactivate wh     → action: status_change,  auditable: App\Models\Warehouse
+  - reactivate wh     → action: status_change,  auditable: App\Models\Warehouse
+
+Field audit yang sudah ada dan dipakai:
+  - user_id (actor)
+  - auditable_type (App\Models\Branch atau App\Models\Warehouse)
+  - auditable_id
+  - action (dari AuditActionEnum)
+  - old_values / new_values (JSON snapshot)
+  - ip_address, user_agent
+  - created_at
+
+Kolom 'password' dan 'remember_token' dikecualikan via $auditExclude.
+Untuk Branch dan Warehouse tidak ada kolom sensitif, jadi $auditExclude = [].
+
+──────────────────────────────────────────────────────────────────────────────
+6) USER STORIES
+──────────────────────────────────────────────────────────────────────────────
+Branch:
+1) Sebagai Super Admin, saya bisa membuat cabang baru dengan kode unik dan
+   nama, dan sistem otomatis membuat gudang MAIN untuk cabang tersebut.
+2) Sebagai Super Admin, saya bisa mengedit data cabang (nama, alamat, phone,
+   timezone, notes) — branch_code readonly setelah dibuat.
+3) Sebagai Super Admin, saya bisa menonaktifkan cabang yang sudah tidak
+   beroperasi (dan mereaktifkannya kembali jika diperlukan).
+4) Sebagai Owner, saya bisa melihat daftar semua cabang dan statusnya.
+5) Sebagai Admin Cabang, saya hanya bisa melihat data cabang saya sendiri
+   (beserta gudangnya).
+
+Warehouse:
+6) Sebagai Super Admin, saya bisa menambahkan gudang tambahan (SECONDARY/
+   RETURNS) pada cabang tertentu.
+7) Sebagai Admin Cabang, saya bisa menambah/mengedit/menonaktifkan gudang
+   di cabang saya sendiri.
+8) Sebagai Kasir dan Accounting, saya bisa melihat daftar gudang cabang saya.
+9) Sebagai Owner, saya bisa melihat semua gudang di semua cabang.
+
+Audit:
+10) Sebagai Owner/Accounting, saya bisa melihat audit log perubahan
+    cabang/gudang (melalui halaman audit log yang sudah ada).
+
+──────────────────────────────────────────────────────────────────────────────
+7) KEBUTUHAN FUNGSIONAL
+──────────────────────────────────────────────────────────────────────────────
+
+7.1 Branch CRUD
+
+Routes (mengikuti konvensi admin/* yang sudah ada):
+  GET    /admin/branches            → index   [branches.view]
+  GET    /admin/branches/create     → create  [branches.create]
+  POST   /admin/branches            → store   [branches.create]
+  GET    /admin/branches/{branch}   → show    [branches.view]
+  GET    /admin/branches/{branch}/edit → edit [branches.update]
+  PUT    /admin/branches/{branch}   → update  [branches.update]
+  PATCH  /admin/branches/{branch}/deactivate → deactivate [branches.deactivate]
+  PATCH  /admin/branches/{branch}/reactivate → reactivate [branches.deactivate]
+
+Validasi (StoreBranchRequest):
+  - branch_code : required, string, max:20, uppercase, unique:branches,branch_code
+                  regex: /^[A-Z0-9_-]+$/
+  - name        : required, string, max:100
+  - address     : nullable, string, max:500
+  - phone       : nullable, string, max:20
+  - timezone    : nullable, string, max:50, default 'Asia/Jakarta' jika kosong
+  - notes       : nullable, string
+  - is_active   : boolean
+
+Validasi (UpdateBranchRequest):
+  - branch_code : readonly — tidak terima di request (ignore atau strip)
+  - name        : required, string, max:100
+  - address     : nullable, string, max:500
+  - phone       : nullable, string, max:20
+  - timezone    : nullable, string, max:50
+  - notes       : nullable, string
+  - is_active   : boolean (hanya super_admin, via deactivate route terpisah)
+
+Branch scoping di controller:
+  - Global roles (super_admin, owner): tidak ada filter → tampil semua branch.
+  - Non-global: query di-scope ke branch_id mereka sendiri → hanya bisa
+    GET/show branch mereka sendiri (enforce di BranchPolicy).
+
+7.2 Warehouse CRUD
+
+Routes:
+  GET    /admin/warehouses              → index   [warehouses.view]
+  GET    /admin/warehouses/create       → create  [warehouses.create]
+  POST   /admin/warehouses              → store   [warehouses.create]
+  GET    /admin/warehouses/{warehouse}  → show    [warehouses.view]
+  GET    /admin/warehouses/{warehouse}/edit → edit [warehouses.update]
+  PUT    /admin/warehouses/{warehouse}  → update  [warehouses.update]
+  PATCH  /admin/warehouses/{warehouse}/deactivate → deactivate [warehouses.deactivate]
+  PATCH  /admin/warehouses/{warehouse}/reactivate → reactivate [warehouses.deactivate]
+
+Validasi (StoreWarehouseRequest):
+  - warehouse_code : required, string, max:30, uppercase, unique:warehouses,warehouse_code
+                     regex: /^[A-Z0-9_-]+$/
+  - branch_id      : required, exists:branches,id,is_active,1
+                     (hanya branch aktif bisa dipilih)
+                     Untuk non-global user: branch_id HARUS sama dengan
+                     user's branch_id (enforce di withValidator atau Policy)
+  - name           : required, string, max:100
+  - type           : nullable, in:MAIN,SECONDARY,RETURNS
+  - notes          : nullable, string
+  - is_active      : boolean
+
+Validasi (UpdateWarehouseRequest):
+  - warehouse_code : readonly — tidak bisa diubah setelah dibuat
+  - branch_id      : readonly — tidak bisa diubah setelah dibuat (gudang
+                     tidak bisa dipindah antar cabang)
+  - name           : required, string, max:100
+  - type           : nullable, in:MAIN,SECONDARY,RETURNS
+  - notes          : nullable, string
+
+Warehouse scoping:
+  - Gunakan BranchScoped trait yang sudah ada di app/Traits/BranchScoped.php.
+  - Warehouse::forBranch($branchId)->get() — null = tidak difilter (global).
+  - Policy memastikan non-global user hanya bisa CRUD warehouse cabangnya.
+
+7.3 Branch-based Access Enforcement
+
+Enforcement berlapis (sama seperti Module 01 & 02):
+  Layer 1: Permission check via middleware 'permission' atau Gate::authorize
+  Layer 2: Policy (BranchPolicy, WarehousePolicy)
+  Layer 3: Query scoping di controller (getAccessibleBranchId())
+
+Pola yang sudah ada di User model (TIDAK berubah):
+  - getAccessibleBranchId(): ?int → null = global, int = filtered
+  - canAccessBranch(int $branchId): bool → untuk validasi per-resource
+  - isGlobal(): bool
+
+7.4 Dampak ke Validasi User (Module 01 — perlu diupdate)
+
+StoreUserRequest saat ini:
+  'branch_id' => ['nullable', 'integer'],   ← terlalu longgar
+
+Setelah modul ini, harus diperbarui menjadi:
+  'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+
+UpdateUserRequest: perubahan yang sama.
+
+Tambahan: jika role requiresBranch(), branch yang dipilih harus is_active=true.
+Tambahkan di withValidator():
+  $branch = \App\Models\Branch::find($this->input('branch_id'));
+  if ($branch && !$branch->is_active) {
+      $validator->errors()->add('branch_id', 'Cabang yang dipilih tidak aktif.');
+  }
+
+Catatan: withValidator() di kedua Request sudah ada — tinggal tambahkan
+validasi is_active di dalam blok tersebut.
+
+──────────────────────────────────────────────────────────────────────────────
+8) KEBUTUHAN UI/UX
+──────────────────────────────────────────────────────────────────────────────
+Mengikuti pola visual yang sama dengan halaman Admin Module 01 & 02
+(Tailwind CSS, tabel, form cards, badge status Aktif/Nonaktif).
+
+8.1 Halaman Branch List (/admin/branches)
+  Kolom tabel:
+  - Kode Cabang, Nama Cabang, Status (badge), Alamat singkat, Aksi
+
+  Aksi per baris:
+  - [Detail] → show (branches.view)
+  - [Edit]   → edit (branches.update)
+  - [Nonaktifkan] / [Aktifkan] → deactivate/reactivate (branches.deactivate)
+
+  Filter:
+  - Status (Active/Inactive/All)
+  - Keyword (search pada branch_code dan name)
+
+  Catatan:
+  - Non-global user: hanya melihat baris cabang miliknya (hasil query scoping)
+  - Tombol "Tambah Cabang" hanya tampil jika user punya branches.create
+
+8.2 Halaman Branch Detail/Show (/admin/branches/{branch})
+  Tampilkan:
+  - Semua field branch (branch_code, name, address, phone, timezone, status)
+  - Daftar warehouse terkait dalam tabel (warehouse_code, name, type, status)
+  - Tombol aksi (Edit Branch, Tambah Warehouse ke branch ini)
+
+8.3 Halaman Branch Form (create & edit)
+  - branch_code: input text (disabled/readonly pada edit)
+  - name: input text
+  - address: textarea
+  - phone: input text
+  - timezone: input text (default 'Asia/Jakarta')
+  - notes: textarea
+  - status checkbox (hanya tampil pada edit)
+
+8.4 Halaman Warehouse List (/admin/warehouses)
+  Kolom tabel:
+  - Kode Gudang, Nama Gudang, Cabang, Tipe, Status, Aksi
+
+  Filter:
+  - Cabang (dropdown — untuk global: semua cabang; non-global: hanya cabangnya)
+  - Status (Active/Inactive/All)
+  - Keyword (search pada warehouse_code dan name)
+
+8.5 Halaman Warehouse Form (create & edit)
+  - branch_id: dropdown (hanya branch aktif; non-global: locked ke cabangnya)
+  - warehouse_code: input text (disabled/readonly pada edit)
+  - name: input text
+  - type: dropdown (MAIN / SECONDARY / RETURNS / Tidak Ditentukan)
+  - notes: textarea
+  - status checkbox (hanya tampil pada edit)
+
+8.6 Sidebar / Navigasi
+  Tambahkan grup "Master Wilayah" (atau di bawah "Master Data") di sidebar:
+  - Cabang      → /admin/branches  (tampil jika branches.view)
+  - Gudang      → /admin/warehouses (tampil jika warehouses.view)
+
+8.7 User Form (dampak ke Module 01)
+  Dropdown branch_id di create/edit user:
+  - Sebelumnya: mungkin kosong atau dummy (branches table belum ada)
+  - Setelah modul ini: dropdown terisi dari Branch::where('is_active', true)
+  - Hanya tampilkan cabang aktif untuk dipilih
+
+──────────────────────────────────────────────────────────────────────────────
+9) DATA MODEL (TABEL BARU DAN PERUBAHAN TABEL EXISTING)
+──────────────────────────────────────────────────────────────────────────────
+
+9.1 TABEL BARU: branches
+
+  Kolom           Tipe                Keterangan
+  ──────────────  ──────────────────  ───────────────────────────────────────
+  id              BIGINT (PK)         Auto-increment
+  branch_code     VARCHAR(20)         Kode cabang (UNIQUE, uppercase)
+                                      PENTING: bukan 'code' — lihat catatan
+                                      stub di bagian 10.
+  name            VARCHAR(100)        Nama cabang (required)
+  address         TEXT (NULL)         Alamat lengkap (opsional)
+  phone           VARCHAR(20) (NULL)  Nomor telepon (opsional)
+  timezone        VARCHAR(50) (NULL)  Default 'Asia/Jakarta'
+  notes           TEXT (NULL)         Catatan internal (opsional)
+  is_active       BOOLEAN             Status aktif, default true
+  metadata_json   JSON (NULL)         Cadangan untuk data tambahan masa depan
+  created_at      TIMESTAMP
+  updated_at      TIMESTAMP
+
+  INDEX    : branch_code, is_active
+  UNIQUE   : branch_code
+  TIDAK ADA soft delete (pakai is_active saja — konsisten dengan Module 02)
+  Trait    : Auditable
+
+  Relasi Branch model:
+  - hasMany User (sudah ada di stub, tidak berubah)
+  - hasMany Warehouse (baru)
+  - hasMany PriceList (baru, via branch_id di price_lists)
+
+9.2 TABEL BARU: warehouses
+
+  Kolom           Tipe                Keterangan
+  ──────────────  ──────────────────  ───────────────────────────────────────
+  id              BIGINT (PK)         Auto-increment
+  branch_id       BIGINT (FK)         → branches.id (RESTRICT ON DELETE)
+  warehouse_code  VARCHAR(30)         Kode gudang (UNIQUE GLOBAL)
+                                      Format default: {BRANCH_CODE}-MAIN
+  name            VARCHAR(100)        Nama gudang (required)
+  type            VARCHAR(20) (NULL)  MAIN | SECONDARY | RETURNS (opsional)
+  is_active       BOOLEAN             Status aktif, default true
+  notes           TEXT (NULL)         Catatan internal (opsional)
+  metadata_json   JSON (NULL)         Cadangan extensibilitas masa depan
+  created_at      TIMESTAMP
+  updated_at      TIMESTAMP
+
+  INDEX    : branch_id, is_active, warehouse_code
+  UNIQUE   : warehouse_code (GLOBAL — Opsi A, lebih aman)
+  FK       : branch_id → branches.id (RESTRICT, tidak bisa hapus branch jika
+             masih punya warehouse)
+  TIDAK ADA soft delete (pakai is_active saja — konsisten dengan Module 02)
+  Trait    : Auditable, BranchScoped (sudah ada di app/Traits/BranchScoped.php)
+
+  Relasi Warehouse model:
+  - belongsTo Branch
+
+9.3 PERUBAHAN TABEL EXISTING: users (FK tambahan)
+
+  Migration baru (jalankan setelah create_branches_table):
+    Nama file: 2026_02_28_300002_add_foreign_key_branch_id_to_users_table.php
+
+  Isi migration:
+    Schema::table('users', function (Blueprint $table) {
+        $table->foreign('branch_id')
+              ->references('id')
+              ->on('branches')
+              ->nullOnDelete();  // jika branch dihapus (tidak akan terjadi
+                                 // karena kita tidak hard delete, tapi aman)
+    });
+
+  Catatan: branch_id sudah ada di tabel users sejak Module 01.
+  Migration ini hanya menambahkan FK constraint, tidak mengubah kolom.
+
+9.4 PERUBAHAN TABEL EXISTING: price_lists (FK tambahan)
+
+  Migration baru (jalankan setelah create_branches_table):
+    Nama file: 2026_02_28_300003_add_foreign_key_branch_id_to_price_lists_table.php
+
+  Isi migration:
+    Schema::table('price_lists', function (Blueprint $table) {
+        $table->foreign('branch_id')
+              ->references('id')
+              ->on('branches')
+              ->nullOnDelete();
+    });
+
+  Catatan: price_lists.branch_id sudah ada sejak Module 02 (nullable,
+  tanpa FK). Migration ini hanya menambahkan FK constraint.
+
+──────────────────────────────────────────────────────────────────────────────
+10) INTEGRASI DENGAN KODE EXISTING (WAJIB DIBACA SEBELUM IMPLEMENTASI)
+──────────────────────────────────────────────────────────────────────────────
+
+Bagian ini mendokumentasikan persis file mana yang DIUBAH dan file mana
+yang DIBUAT BARU — agar tidak konflik dengan Module 01 dan 02.
+
+── 10.1 FILE YANG DIUBAH (EXISTING) ─────────────────────────────────────────
+
+app/Models/Branch.php                           [UPGRADE dari stub]
+  Saat ini: stub dengan fillable ['name', 'code', 'address', 'is_active']
+  Kolom 'code' di stub TIDAK SAMA dengan 'branch_code' di migration baru.
+  Setelah modul ini, Branch model harus diupdate:
+  - fillable: ['branch_code', 'name', 'address', 'phone', 'timezone',
+               'notes', 'is_active', 'metadata_json']
+  - casts   : ['is_active' => 'boolean', 'metadata_json' => 'array']
+  - Traits  : Auditable (tambahkan)
+  - Relasi  : hasMany(User::class) sudah ada — pertahankan
+              hasMany(Warehouse::class) — tambahkan
+  - HAPUS   : use Illuminate\Database\Eloquent\Model (ganti dengan
+              infrastruktur yang sama dengan model Module 02)
+  WARNING   : Kode yang mereferensikan $branch->code (jika ada di view/
+              controller) harus diubah ke $branch->branch_code.
+              Di Module 01, branch belum dipakai secara aktif di view,
+              jadi risiko rendah. Periksa dengan: grep -r "->code" resources/
+
+app/Http/Requests/Admin/StoreUserRequest.php    [UPDATE validasi branch_id]
+  Saat ini: 'branch_id' => ['nullable', 'integer']
+  Ubah menjadi: 'branch_id' => ['nullable', 'integer', 'exists:branches,id']
+  Tambahkan di withValidator() — setelah cek requiresBranch():
+    if ($this->input('branch_id')) {
+        $branch = \App\Models\Branch::find($this->input('branch_id'));
+        if ($branch && !$branch->is_active) {
+            $validator->errors()->add('branch_id',
+                'Cabang yang dipilih tidak aktif.');
+        }
+    }
+
+app/Http/Requests/Admin/UpdateUserRequest.php   [UPDATE validasi branch_id]
+  Perubahan sama dengan StoreUserRequest di atas.
+
+database/seeders/PermissionSeeder.php           [TAMBAH 8 permission baru]
+  Tambahkan ke array permission yang sudah ada (pakai updateOrCreate):
+    ['slug' => 'branches.view',         'name' => 'Lihat Daftar Cabang'],
+    ['slug' => 'branches.create',       'name' => 'Tambah Cabang'],
+    ['slug' => 'branches.update',       'name' => 'Edit Cabang'],
+    ['slug' => 'branches.deactivate',   'name' => 'Nonaktifkan Cabang'],
+    ['slug' => 'warehouses.view',       'name' => 'Lihat Daftar Gudang'],
+    ['slug' => 'warehouses.create',     'name' => 'Tambah Gudang'],
+    ['slug' => 'warehouses.update',     'name' => 'Edit Gudang'],
+    ['slug' => 'warehouses.deactivate', 'name' => 'Nonaktifkan Gudang'],
+
+database/seeders/RolePermissionSeeder.php       [TAMBAH mapping baru]
+  Tambahkan ke mapping masing-masing role (pakai syncWithoutDetaching):
+
+  super_admin: [SEMUA permission — sudah bypass di hasPermission()]
+    Tetap di-seed untuk konsistensi: tambah ke array super_admin semua 8 slug.
+
+  owner:
+    Tambah: branches.view, warehouses.view
+
+  admin_cabang:
+    Tambah: branches.view, warehouses.view, warehouses.create,
+            warehouses.update, warehouses.deactivate
+    TIDAK tambah: branches.create, branches.update, branches.deactivate
+
+  kasir:
+    Tambah: branches.view, warehouses.view
+
+  accounting:
+    Tambah: branches.view, warehouses.view
+
+database/seeders/DatabaseSeeder.php             [TAMBAH seeder baru]
+  Tambahkan BranchSeeder dan WarehouseDefaultSeeder (jika ada) ke urutan
+  setelah Module 02 seeders. Urutan:
+    1. RoleSeeder
+    2. PermissionSeeder         ← include 8 slug baru
+    3. RolePermissionSeeder     ← include mapping baru
+    4. SuperAdminSeeder
+    5. UomSeeder, CategorySeeder, BrandSeeder, AttributeDefinitionSeeder
+    6. BranchSeeder             ← BARU (cabang contoh/default)
+    (WarehouseDefaultSeeder tidak perlu terpisah — warehouse MAIN dibuat
+    otomatis oleh Branch model event saat BranchSeeder berjalan)
+
+resources/views/layouts/sidebar.blade.php      [TAMBAH menu navigasi]
+  (atau view partial yang berisi navigasi)
+  Tambahkan link Cabang dan Gudang dengan guard @can('branches.view').
+
+── 10.2 FILE BARU YANG DIBUAT ────────────────────────────────────────────────
+
+database/migrations/
+  2026_02_28_300001_create_branches_table.php
+  2026_02_28_300002_create_warehouses_table.php
+  2026_02_28_300003_add_foreign_key_branch_id_to_users_table.php
+  2026_02_28_300004_add_foreign_key_branch_id_to_price_lists_table.php
+
+app/Models/
+  Warehouse.php
+    - fillable: ['branch_id', 'warehouse_code', 'name', 'type',
+                 'is_active', 'notes', 'metadata_json']
+    - casts   : ['is_active' => 'boolean', 'metadata_json' => 'array']
+    - Traits  : Auditable, BranchScoped
+    - Relasi  : belongsTo(Branch::class)
+    - $auditExclude: []
+
+app/Http/Controllers/Admin/
+  BranchController.php
+    Methods: index, create, store, show, edit, update, deactivate, reactivate
+    - store(): setelah $branch->save(), buat default Warehouse (MAIN)
+    - Semua action: Gate::authorize via BranchPolicy
+    - Query scoping: Branch::when(!auth()->user()->isGlobal(), fn($q) =>
+        $q->where('id', auth()->user()->branch_id))
+
+  WarehouseController.php
+    Methods: index, create, store, show, edit, update, deactivate, reactivate
+    - Semua action: Gate::authorize via WarehousePolicy
+    - Query scoping: Warehouse::forBranch(auth()->user()->getAccessibleBranchId())
+
+app/Http/Requests/Admin/
+  StoreBranchRequest.php
+  UpdateBranchRequest.php
+  StoreWarehouseRequest.php
+  UpdateWarehouseRequest.php
+
+app/Policies/
+  BranchPolicy.php
+    - viewAny  : hasPermission('branches.view')
+    - view     : hasPermission('branches.view') && canAccessBranch($branch->id)
+    - create   : hasPermission('branches.create')
+    - update   : hasPermission('branches.update') && canAccessBranch($branch->id)
+    - deactivate: hasPermission('branches.deactivate')
+    Catatan: canAccessBranch() sudah ada di User model.
+
+  WarehousePolicy.php
+    - viewAny  : hasPermission('warehouses.view')
+    - view     : hasPermission('warehouses.view') &&
+                 canAccessBranch($warehouse->branch_id)
+    - create   : hasPermission('warehouses.create')
+    - update   : hasPermission('warehouses.update') &&
+                 canAccessBranch($warehouse->branch_id)
+    - deactivate: hasPermission('warehouses.deactivate') &&
+                  canAccessBranch($warehouse->branch_id)
+
+database/seeders/
+  BranchSeeder.php
+    Buat beberapa cabang contoh (atau minimal 1 cabang default).
+    Contoh:
+      branch_code: 'PUSAT', name: 'Kantor Pusat', timezone: 'Asia/Jakarta'
+    Saat BranchSeeder membuat branch, model event 'created' otomatis
+    membuat Warehouse MAIN (PUSAT-MAIN).
+
+app/Providers/AuthServiceProvider.php           [UPDATE — tambah 2 policy]
+  Tambahkan ke $policies array:
+    \App\Models\Branch::class    => \App\Policies\BranchPolicy::class,
+    \App\Models\Warehouse::class => \App\Policies\WarehousePolicy::class,
+
+resources/views/admin/
+  branches/
+    index.blade.php
+    create.blade.php
+    edit.blade.php
+    show.blade.php   (tampilkan daftar warehouse terkait)
+  warehouses/
+    index.blade.php
+    create.blade.php
+    edit.blade.php
+    show.blade.php
+
+routes/web.php                                  [TAMBAH route grup baru]
+  Route::middleware(['auth', 'active'])->prefix('admin')->group(function() {
+      Route::resource('branches', BranchController::class)
+           ->except(['destroy']);
+      Route::patch('branches/{branch}/deactivate', [..., 'deactivate']);
+      Route::patch('branches/{branch}/reactivate', [..., 'reactivate']);
+
+      Route::resource('warehouses', WarehouseController::class)
+           ->except(['destroy']);
+      Route::patch('warehouses/{warehouse}/deactivate', [...]);
+      Route::patch('warehouses/{warehouse}/reactivate', [...]);
+  });
+
+tests/Feature/
+  BranchTest.php       (lihat section 13 untuk detail test cases)
+  WarehouseTest.php
+
+── 10.3 FILE YANG TIDAK DIUBAH (Module 01 & 02 tetap utuh) ──────────────────
+
+  app/Models/User.php                  ← relasi branch() sudah ada, tetap
+  app/Models/Role.php                  ← tidak berubah
+  app/Models/Permission.php            ← tidak berubah
+  app/Models/AuditLog.php              ← tidak berubah
+  app/Traits/Auditable.php             ← tidak berubah, langsung dipakai
+  app/Traits/BranchScoped.php          ← tidak berubah, langsung dipakai
+  app/Enums/RoleEnum.php               ← tidak berubah
+  app/Enums/AuditActionEnum.php        ← tidak berubah
+  app/Services/Audit/AuditLogger.php   ← tidak berubah
+  app/Models/Brand.php                 ← tidak berubah
+  app/Models/Category.php              ← tidak berubah
+  app/Models/Item.php                  ← tidak berubah
+  app/Models/PriceList.php             ← tidak berubah (FK ditambah di migration)
+  app/Services/Product/ExcelImportService.php ← tidak berubah
+
+──────────────────────────────────────────────────────────────────────────────
+11) INTEGRASI & DAMPAK KE MODUL BERIKUTNYA
+──────────────────────────────────────────────────────────────────────────────
+
+Module 04 – Pricing Management:
+  - price_lists.branch_id setelah modul ini punya FK ke branches.id.
+  - PriceListController bisa filter berdasarkan branch_id dengan aman.
+  - Override harga per cabang: buat PriceList scope=BRANCH dengan branch_id valid.
+
+Module 05 – Inventory Core:
+  - stock_ledger akan punya (branch_id FK branches, warehouse_id FK warehouses).
+  - Stok per cabang/gudang: SELECT * FROM stock_ledger WHERE branch_id=X AND
+    warehouse_id=Y.
+  - Warehouse::where('is_active', true)->where('branch_id', $branch->id)->get()
+    untuk pilih gudang tujuan pengurangan stok.
+
+Module 06 – POS:
+  - Kasir terikat ke branch_id → default warehouse adalah MAIN warehouse cabang.
+  - Ambil: Warehouse::where('branch_id', $branchId)->where('type', 'MAIN')->first()
+
+Module 07 – Delivery Order:
+  - DO punya origin_warehouse_id dan destination_warehouse_id (FK warehouses).
+
+──────────────────────────────────────────────────────────────────────────────
+12) NON-FUNCTIONAL REQUIREMENTS
+──────────────────────────────────────────────────────────────────────────────
+- Performance    : List branch/warehouse harus responsif dengan pagination
+                   (10 per halaman, konsisten dengan Module 01 & 02).
+- Security       : Semua endpoint wajib RBAC (middleware permission) +
+                   Policy (canAccessBranch).
+- Auditability   : Semua perubahan master data branch/warehouse tercatat
+                   append-only via Auditable trait.
+- Reliability    : Deactivate tidak menghapus referensi historis.
+                   FK RESTRICT pada warehouse→branch mencegah orphan data.
+- Compatibility  : PHP 8.x, Laravel 10, MySQL — tidak ada dependency baru.
+                   Tidak perlu package tambahan.
+- Deploy         : Hostinger Shared Hosting — tidak ada Supervisor/Redis.
+                   Tidak ada job queue baru. Auto-create warehouse MAIN
+                   dilakukan synchronous di controller, bukan via queue.
+
+──────────────────────────────────────────────────────────────────────────────
+13) ACCEPTANCE CRITERIA & TEST CASES
+──────────────────────────────────────────────────────────────────────────────
+
+Modul dianggap selesai jika SEMUA test berikut passing:
+
+BranchTest.php:
+  [ ] super_admin dapat membuat branch baru (valid data)
+  [ ] super_admin dapat membuat branch → warehouse MAIN otomatis terbuat
+  [ ] branch_code duplikat ditolak (422)
+  [ ] branch_code tidak bisa diubah via update (dikecualikan dari request)
+  [ ] super_admin dapat deactivate branch
+  [ ] super_admin dapat reactivate branch
+  [ ] owner hanya bisa view (403 pada create/update/deactivate)
+  [ ] admin_cabang hanya bisa view branch miliknya (200)
+  [ ] admin_cabang tidak bisa view branch lain (403)
+  [ ] admin_cabang tidak bisa create branch (403)
+  [ ] kasir tidak bisa create/update/deactivate branch (403)
+  [ ] deactivate branch → user dengan branch_id tersebut tetap ada di DB
+  [ ] branch tidak aktif muncul di list dengan badge "Nonaktif"
+  [ ] audit log tercatat saat create branch
+  [ ] audit log tercatat saat update branch
+  [ ] audit log tercatat saat deactivate branch
+
+WarehouseTest.php:
+  [ ] super_admin dapat membuat warehouse di branch manapun
+  [ ] admin_cabang dapat membuat warehouse di cabangnya sendiri
+  [ ] admin_cabang tidak bisa membuat warehouse di cabang lain (403)
+  [ ] warehouse_code duplikat ditolak (422)
+  [ ] warehouse_code tidak bisa diubah via update
+  [ ] branch_id tidak bisa diubah via update
+  [ ] admin_cabang dapat deactivate warehouse cabangnya
+  [ ] admin_cabang tidak bisa deactivate warehouse cabang lain (403)
+  [ ] kasir hanya bisa view warehouse cabangnya (403 untuk create)
+  [ ] owner bisa view semua warehouse (200)
+  [ ] pemilihan branch nonaktif untuk warehouse baru ditolak (422)
+  [ ] audit log tercatat saat create warehouse
+  [ ] audit log tercatat saat update warehouse
+  [ ] audit log tercatat saat deactivate warehouse
+
+UserRequestTest.php (update dari Module 01 test):
+  [ ] create user dengan branch_id yang tidak ada di tabel branches ditolak
+  [ ] create user non-global dengan branch nonaktif ditolak
+  [ ] create user global dengan branch_id diisi → error validasi (sudah ada)
+
+Regression (pastikan Module 01 & 02 tidak rusak):
+  [ ] Semua 26 test Module 01 tetap passing
+  [ ] Semua 32 test Module 02 tetap passing
+
+──────────────────────────────────────────────────────────────────────────────
+14) RENCANA IMPLEMENTASI (MILESTONE)
+──────────────────────────────────────────────────────────────────────────────
+
+M1 – Schema, Model, Seeder
+  Priority: PERTAMA — fondasi untuk milestone lain.
+
+  Langkah berurutan (penting: urutan migration harus benar):
+  1. Migration create_branches_table
+  2. Migration create_warehouses_table
+  3. Migration add_foreign_key_branch_id_to_users_table
+  4. Migration add_foreign_key_branch_id_to_price_lists_table
+  5. Upgrade app/Models/Branch.php (dari stub ke full model + Auditable)
+  6. Buat app/Models/Warehouse.php (dengan Auditable + BranchScoped)
+  7. Update PermissionSeeder (tambah 8 slug baru)
+  8. Update RolePermissionSeeder (tambah mapping baru)
+  9. Buat BranchSeeder (minimal 1 cabang contoh → auto-trigger warehouse MAIN)
+  10. Update DatabaseSeeder (tambah BranchSeeder)
+  11. Update AuthServiceProvider (tambah 2 policy)
+  12. Jalankan: php artisan migrate && php artisan db:seed --class=PermissionSeeder
+                && php artisan db:seed --class=RolePermissionSeeder
+                && php artisan db:seed --class=BranchSeeder
+
+  Validasi M1: cek tabel branches, warehouses ada; cek FK constraint;
+  cek 46 permission di tabel permissions.
+
+M2 – Policy, Form Request, Controller, Route
+  1. Buat BranchPolicy.php dan WarehousePolicy.php
+  2. Buat StoreBranchRequest.php dan UpdateBranchRequest.php
+  3. Buat StoreWarehouseRequest.php dan UpdateWarehouseRequest.php
+  4. Update StoreUserRequest.php (branch_id validation + is_active check)
+  5. Update UpdateUserRequest.php (branch_id validation + is_active check)
+  6. Buat BranchController.php
+  7. Buat WarehouseController.php
+  8. Update routes/web.php
+
+M3 – Views
+  1. Buat resources/views/admin/branches/ (index, create, edit, show)
+  2. Buat resources/views/admin/warehouses/ (index, create, edit, show)
+  3. Update sidebar/navigasi (tambah menu Cabang & Gudang)
+  4. Update user form (dropdown branch dari tabel branches)
+  5. npm run build (Vite build sebelum test view-rendering)
+
+M4 – Testing & Hardening
+  1. Buat tests/Feature/BranchTest.php
+  2. Buat tests/Feature/WarehouseTest.php
+  3. Update tests/Feature/UserTest.php (tambah test branch_id validation)
+  4. Jalankan: php artisan test
+  5. Pastikan 55 (existing) + N (baru) tests passing
+  6. Regression check: tidak ada test Module 01 & 02 yang rusak
+
+──────────────────────────────────────────────────────────────────────────────
+15) KEPUTUSAN ARSITEKTUR YANG TELAH DITETAPKAN
+──────────────────────────────────────────────────────────────────────────────
+
+KEP-01: branch_code (bukan 'code')
+  Branch stub model punya kolom 'code'. Migration baru pakai 'branch_code'.
+  Branch model fillable diupdate ke 'branch_code'. Keputusan final: branch_code.
+
+KEP-02: warehouse_code global unique (Opsi A)
+  Menggunakan unique global (bukan unique per branch) untuk menghindari
+  duplikasi cross-branch dan memudahkan lookup tanpa perlu branch context.
+
+KEP-03: FK constraint RESTRICT (bukan CASCADE DELETE)
+  warehouses.branch_id → RESTRICT: branch tidak bisa dihapus jika masih ada
+  warehouse. Tapi kita tidak hard delete branch, jadi ini hanya safety net.
+  users.branch_id → NULL ON DELETE (jika branch suatu saat dihapus, user
+  tidak ikut terhapus — data historis aman).
+  price_lists.branch_id → NULL ON DELETE (sama seperti users).
+
+KEP-04: Auto-create warehouse MAIN di controller (bukan model event)
+  Membuat warehouse MAIN di BranchController::store() (bukan di Branch::boot()
+  via event 'created') karena:
+  - Lebih eksplisit dan mudah ditest
+  - Menghindari side effect saat seeder atau test membuat branch langsung
+    via model tanpa melalui controller
+  - Seeder yang ingin branch tanpa warehouse bisa melakukannya langsung
+  Alternatif: jika ingin via model event, gunakan Branch::creating() observer
+  yang bisa di-disable via flag saat testing (BranchObserver::$autoWarehouse).
+
+KEP-05: Tidak ada soft delete pada Branch dan Warehouse
+  Konsisten dengan Module 02 (brands, categories, uoms, items hanya is_active).
+  Alasan: entitas ini tidak punya transaksi yang perlu dilindungi dari deletion
+  (itu tugasnya FK RESTRICT), dan audit trail sudah cukup via audit_logs.
+
+KEP-06: accounting role tetap non-global (requiresBranch=true)
+  Accounting hanya melihat data cabangnya sendiri. Jika laporan lintas cabang
+  diperlukan, tambahkan permission 'reports.view_all' yang sudah ada di existing
+  permission set — tanpa mengubah role menjadi global.
+
