@@ -1,28 +1,27 @@
 ================================================================================
-   RETAIL CONTROL — ARSITEKTUR MASTER DATA PRODUK (DOKUMENTASI LENGKAP)
+   RETAIL CONTROL — ARSITEKTUR MASTER PRODUK & ATRIBUT DINAMIS
 ================================================================================
 
-Dokumen ini menjelaskan secara detail analisis data sumber, rancangan skema,
-strategi import, arsitektur komponen, flow end-to-end, policy/authorization,
-dan catatan arsitektur yang terkait dengan Module 02 (Master Data Produk / SKU)
+Dokumen ini menjelaskan implementasi aktual, rancangan skema, strategi import,
+arsitektur komponen, flow end-to-end, policy/authorization, dan catatan
+arsitektur yang terkait dengan Module 02 (Master Produk & Atribut Dinamis / SKU)
 pada project RetailControl.
 
-Terakhir diperbarui : 2026-02-28 (rewrite setara detail USER_MANAGEMENT.txt)
+Terakhir diperbarui : 2026-03-08
 Status              : MODULE 02 SELESAI
-Test Suite          : 58 tests passing (32 Module02 + 26 Module01)
-                      (isu pre-existing: Duplicate entry pada DB Refresh)
+Test Suite          : 62 tests passing untuk Module 01–02
 
 Dasar penyusunan:
 - Dokumen scope & arsitektur sistem toko material multi cabang.
 - Excel existing master produk: 'MASTER BOOK TOKO 250126 (1).xlsx' (11 sheet).
-- Fokus: Master Data Produk (SKU) + strategi import & normalisasi dari Excel.
+- Fokus: Master Produk (SKU) + atribut dinamis + strategi import & normalisasi dari Excel.
 
 
 ================================================================================
  1. GAMBARAN UMUM (OVERVIEW)
 ================================================================================
 
-Module 02 membangun Master Data Produk (SKU) untuk sistem POS RetailControl.
+Module 02 membangun Master Produk (SKU) untuk sistem POS RetailControl.
 Komponen yang diimplementasikan:
 
   - Tabel DB        : brands, categories, uoms, items, item_barcodes,
@@ -645,7 +644,7 @@ F. KEPUTUSAN PRAKTIS (AGAR SESUAI KONDISI: DATA HANYA EXCEL)
 ==========================================================================================
 G. ACCEPTANCE CRITERIA (DEFINITION OF DONE) — STATUS SAAT INI
 ==========================================================================================
-Master Data Produk dinyatakan siap dipakai jika:
+Master Produk dinyatakan siap dipakai jika:
 
   KRITERIA                                                STATUS
   ──────────────────────────────────────────────────────  ───────────────────────────────
@@ -1173,7 +1172,7 @@ RetailControl/
 │  → categories.view, categories.create, categories.update,                   │
 │    categories.deactivate                                                    │
 │  → uoms.view, uoms.create, uoms.update, uoms.deactivate                     │
-│  (admin_cabang boleh kelola master data karena katalog bersifat global)     │
+│  (admin boleh kelola master data karena katalog bersifat global)            │
 │                                                                             │
 │  KASIR:                                                                     │
 │  → items.view, brands.view, categories.view, uoms.view                      │
@@ -1364,12 +1363,12 @@ RetailControl/
   duplicate_sku_code_is_rejected               Unique constraint sku_code
   kasir_cannot_create_an_item                  403 Forbidden
   kasir_can_view_items_list                    200 OK (items.view)
-  admin_cabang_can_create_an_item              Verifikasi permission create
+  admin_can_create_an_item                     Verifikasi permission create
   super_admin_can_update_an_item               PUT update + audit log update
   kasir_cannot_update_an_item                  403 Forbidden
   super_admin_can_deactivate_an_item           is_active=false + audit log
   kasir_cannot_deactivate_an_item              403, is_active tetap true
-  admin_cabang_can_deactivate_an_item          Verifikasi permission deactivate
+  admin_can_deactivate_an_item                 Verifikasi permission deactivate
   super_admin_can_view_item_detail             GET show 200 OK
   items_index_filters_by_active_status         Filter active=1 menyembunyikan inactive
 
@@ -1391,7 +1390,7 @@ RetailControl/
   kasir_cannot_create_a_category               403 Forbidden
   kasir_can_view_categories_list               200 OK
   super_admin_can_deactivate_a_category        is_active=false
-  (1 test gabung dengan admin_cabang di akhir)
+  (1 test gabung dengan admin di akhir)
 
   [UoM - 7 tests]
   super_admin_can_create_a_uom                 create UoM
@@ -1401,7 +1400,7 @@ RetailControl/
   super_admin_can_update_a_uom                 update name UoM
   super_admin_can_deactivate_a_uom             is_active=false + audit log
   kasir_cannot_deactivate_a_uom                403 Forbidden
-  admin_cabang_can_create_brand_and_category   Verifikasi permission dua model
+  admin_can_create_brand_and_category          Verifikasi permission dua model
 
   Setup: RefreshDatabase + DatabaseSeeder (MySQL; DB: retail_control_test)
   CATATAN: Jika DB di-refresh sangat cepat setelah INSERT seeder, bisa muncul

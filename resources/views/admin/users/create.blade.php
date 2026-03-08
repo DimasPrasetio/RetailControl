@@ -170,7 +170,7 @@
                               transition placeholder-gray-400
                               focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20
                               @error('branch_id') border-red-400 bg-red-50 @enderror"
-                       placeholder="ID cabang (tersedia di Module 02)">
+                       placeholder="ID cabang operasional">
                 @error('branch_id')
                     <p class="mt-1.5 flex items-center gap-1 text-xs text-red-600">
                         <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -182,6 +182,7 @@
             {{-- Status aktif --}}
             <div class="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
                 <div class="flex h-5 items-center">
+                    <input type="hidden" name="is_active" value="0">
                     <input type="checkbox" id="is_active" name="is_active" value="1"
                            {{ old('is_active', '1') ? 'checked' : '' }}
                            class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-400/30">

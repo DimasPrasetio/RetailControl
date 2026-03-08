@@ -65,8 +65,8 @@
         <div class="flex items-start justify-between">
             <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-gray-600">Modul Aktif</p>
-                <p class="mt-2 text-3xl font-bold text-gray-900">1 <span class="text-base font-medium text-gray-500">/ 10</span></p>
-                <p class="mt-1.5 text-xs text-gray-500">User &amp; Access Control</p>
+                <p class="mt-2 text-3xl font-bold text-gray-900">2 <span class="text-base font-medium text-gray-500">/ 10</span></p>
+                <p class="mt-1.5 text-xs text-gray-500">User &amp; Access Control, Master Produk</p>
             </div>
             <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-green-50">
                 <svg class="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
@@ -81,7 +81,11 @@
 </div>
 
 {{-- ── Quick access ─────────────────────────────────────────────────────── --}}
-@if(auth()->user()->hasPermission('users.view') || auth()->user()->hasPermission('audit_logs.view'))
+@if(
+    auth()->user()->hasPermission('users.view') ||
+    auth()->user()->hasPermission('audit_logs.view') ||
+    auth()->user()->hasPermission('items.view')
+)
 <div class="mb-8">
     <h3 class="mb-3 text-sm font-semibold text-gray-700">Akses Cepat</h3>
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -126,6 +130,26 @@
         </a>
         @endif
 
+        @if(auth()->user()->hasPermission('items.view'))
+        <a href="{{ route('admin.items.index') }}"
+           class="group flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-lg hover:shadow-emerald-500/10">
+            <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-50 transition group-hover:bg-emerald-100">
+                <svg class="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                </svg>
+            </div>
+            <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold text-gray-800">Master Produk</p>
+                <p class="text-xs text-gray-500">Kelola SKU, brand, kategori, dan satuan</p>
+            </div>
+            <svg class="h-4 w-4 flex-shrink-0 text-gray-300 transition-transform group-hover:translate-x-0.5 group-hover:text-gray-400"
+                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+            </svg>
+        </a>
+        @endif
+
     </div>
 </div>
 @endif
@@ -135,7 +159,6 @@
     <h3 class="mb-3 text-sm font-semibold text-gray-700">Modul Berikutnya</h3>
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         @foreach([
-            ['label' => 'Master Data',    'module' => '02'],
             ['label' => 'Harga & Diskon', 'module' => '03'],
             ['label' => 'Inventori',      'module' => '04'],
             ['label' => 'POS Transaksi',  'module' => '05'],

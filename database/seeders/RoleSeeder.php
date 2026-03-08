@@ -20,7 +20,7 @@ class RoleSeeder extends Seeder
                 'description' => 'Visibilitas penuh ke semua cabang (read-only operasional).',
             ],
             [
-                'name'        => RoleEnum::AdminCabang->value,
+                'name'        => RoleEnum::Admin->value,
                 'description' => 'Kelola operasional cabang yang ditugaskan.',
             ],
             [

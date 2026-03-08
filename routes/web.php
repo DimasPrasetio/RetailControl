@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 // ─── Guest routes ─────────────────────────────────────────────────────────────
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'show'])->name('login');
-    Route::post('/login', [LoginController::class, 'store'])->name('login.store')->middleware('throttle:5,1');
+    Route::post('/login', [LoginController::class, 'store'])->name('login.store')->middleware('throttle:login');
 });
 
 // ─── Authenticated routes ──────────────────────────────────────────────────────

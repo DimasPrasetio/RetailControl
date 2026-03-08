@@ -86,12 +86,12 @@ class T0105DeactivateUserTest extends TestCase
     }
 
     /** @test */
-    public function admin_cabang_can_deactivate_non_superadmin(): void
+    public function admin_can_deactivate_non_superadmin(): void
     {
-        $adminRoleId = Role::where('name', 'admin_cabang')->value('id');
+        $adminRoleId = Role::where('name', 'admin')->value('id');
         $admin = User::create([
-            'name'      => 'Admin Cabang',
-            'username'  => 'admin_cabang_test',
+            'name'      => 'Admin',
+            'username'  => 'admin_test',
             'email'     => null,
             'password'  => bcrypt('Password1'),
             'role_id'   => $adminRoleId,
@@ -110,12 +110,12 @@ class T0105DeactivateUserTest extends TestCase
     }
 
     /** @test */
-    public function admin_cabang_cannot_deactivate_super_admin(): void
+    public function admin_cannot_deactivate_super_admin(): void
     {
-        $adminRoleId = Role::where('name', 'admin_cabang')->value('id');
+        $adminRoleId = Role::where('name', 'admin')->value('id');
         $admin = User::create([
-            'name'      => 'Admin Cabang',
-            'username'  => 'admin_cabang_test2',
+            'name'      => 'Admin',
+            'username'  => 'admin_test_2',
             'email'     => null,
             'password'  => bcrypt('Password1'),
             'role_id'   => $adminRoleId,

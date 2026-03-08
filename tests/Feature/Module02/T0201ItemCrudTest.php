@@ -22,7 +22,7 @@ use Tests\TestCase;
  *   - creation is recorded in audit_logs
  *   - deactivation flips is_active + records audit
  *   - kasir can view list but cannot create/update/deactivate
- *   - admin_cabang can create/update/deactivate items
+ *   - admin can create/update/deactivate items
  *   - sku_code must be unique (duplicate rejected)
  *   - base_uom_id is required
  */
@@ -54,9 +54,9 @@ class T0201ItemCrudTest extends TestCase
             'is_active' => true,
         ]);
 
-        $adminRoleId = Role::where('name', 'admin_cabang')->value('id');
+        $adminRoleId = Role::where('name', 'admin')->value('id');
         $this->adminCabang = User::create([
-            'name'      => 'Admin Cabang Test',
+            'name'      => 'Admin Test',
             'username'  => 'admin_item_test',
             'email'     => null,
             'password'  => bcrypt('Password1'),
@@ -155,12 +155,12 @@ class T0201ItemCrudTest extends TestCase
     }
 
     /** @test */
-    public function admin_cabang_can_create_an_item(): void
+    public function admin_can_create_an_item(): void
     {
         $this->actingAs($this->adminCabang)
             ->post(route('admin.items.store'), [
                 'sku_code'    => 'ADM-001',
-                'name'        => 'Produk Admin Cabang',
+                'name'        => 'Produk Admin',
                 'base_uom_id' => $this->uomPcs->id,
                 'is_active'   => 1,
             ])
@@ -272,7 +272,7 @@ class T0201ItemCrudTest extends TestCase
     }
 
     /** @test */
-    public function admin_cabang_can_deactivate_an_item(): void
+    public function admin_can_deactivate_an_item(): void
     {
         $item = Item::create([
             'sku_code'    => 'DEACT-003',

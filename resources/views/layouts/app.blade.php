@@ -104,10 +104,10 @@
                 </a>
             @endif
 
-            {{-- ── Master Data ──────────────────────────────────────────────── --}}
+            {{-- ── Master Produk ────────────────────────────────────────────── --}}
             @if(auth()->user()->hasPermission('items.view') || auth()->user()->hasPermission('brands.view') || auth()->user()->hasPermission('categories.view') || auth()->user()->hasPermission('uoms.view'))
                 <div class="px-3 pb-1 pt-5">
-                    <p class="text-xs font-semibold uppercase tracking-widest text-slate-500">Master Data</p>
+                    <p class="text-xs font-semibold uppercase tracking-widest text-slate-500">Master Produk</p>
                 </div>
             @endif
 

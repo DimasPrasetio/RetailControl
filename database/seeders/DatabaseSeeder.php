@@ -22,8 +22,8 @@ class DatabaseSeeder extends Seeder
             AttributeDefinitionSeeder::class,
         ]);
 
-        // Bersihkan audit log yang tercipta otomatis saat seeding
-        // Gunakan DB::table() karena model AuditLog memblokir delete
-        DB::table('audit_logs')->truncate();
+        // Bersihkan audit log yang tercipta otomatis saat seeding.
+        // Hindari TRUNCATE agar transaksi test MySQL tetap terisolasi.
+        DB::table('audit_logs')->delete();
     }
 }

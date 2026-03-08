@@ -28,6 +28,17 @@ class RouteServiceProvider extends ServiceProvider
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
 
+        RateLimiter::for('login', function (Request $request) {
+            if (! env('LOGIN_THROTTLE_ENABLED', false)) {
+                return Limit::none();
+            }
+
+            return Limit::perMinutes(
+                (int) env('LOGIN_THROTTLE_DECAY', 1),
+                (int) env('LOGIN_THROTTLE_MAX', 5)
+            )->by($request->ip());
+        });
+
         $this->routes(function () {
             Route::middleware('api')
                 ->prefix('api')

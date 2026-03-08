@@ -37,7 +37,7 @@ class RolePermissionSeeder extends Seeder
             'uoms.view',
         ],
 
-        RoleEnum::AdminCabang->value => [
+        RoleEnum::Admin->value => [
             // User management cabang
             'users.view',
             'users.deactivate',

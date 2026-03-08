@@ -2,11 +2,11 @@
    RETAIL CONTROL — ARSITEKTUR AUTH & USER MANAGEMENT (DOKUMENTASI LENGKAP)
 ================================================================================
 
-Dokumen ini menjelaskan secara detail arsitektur, komponen, database schema,
-flow end-to-end, dan mekanisme keamanan yang terkait dengan Authentication
-dan User Management pada project RetailControl.
+Dokumen ini menjelaskan implementasi aktual, arsitektur, komponen, database
+schema, flow end-to-end, dan mekanisme keamanan yang terkait dengan Module 01
+(User, Role & Access Control) pada project RetailControl.
 
-Terakhir diperbarui : 2026-02-27 (sinkronisasi Module 01 + 02 + perbaikan minimal)
+Terakhir diperbarui : 2026-03-08
 
 ================================================================================
  1. GAMBARAN UMUM (OVERVIEW)
@@ -67,7 +67,7 @@ untuk mengelola operasional retail multi-cabang. Sistem ini menggunakan:
 │  Kolom            Tipe              Keterangan                              │
 │  ───────────────  ────────────────  ────────────────────────────────────────│
 │  id               BIGINT (PK)      Auto-increment primary key               │
-│  name             VARCHAR(50)      Nilai: super_admin, admin_cabang,        │
+│  name             VARCHAR(50)      Nilai: super_admin, admin,               │
 │                                    kasir, accounting, owner (UNIQUE)        │
 │                                    *Validasi via PHP Enum (RoleEnum)        │
 │  description      VARCHAR(255)     Deskripsi role (nullable)                │
@@ -171,7 +171,7 @@ DIAGRAM RELASI (ER):
 │  ───────────────  ──────────────  ────────  ─────────────   ──────────────  │
 │  super_admin      Super Admin     Ya        Tidak           Akses penuh     │
 │  owner            Owner           Ya        Tidak           Read-only all   │
-│  admin_cabang     Admin Cabang    Tidak     Ya              Kelola cabang   │
+│  admin            Admin           Tidak     Ya              Kelola cabang   │
 │  kasir            Kasir           Tidak     Ya              Input POS       │
 │  accounting       Accounting      Tidak     Ya              Lap. keuangan   │
 │                                                                             │
@@ -264,7 +264,7 @@ DIAGRAM RELASI (ER):
 │    categories.view, categories.create, categories.update,                   │
 │    categories.deactivate,                                                   │
 │    uoms.view, uoms.create, uoms.update, uoms.deactivate                     │
-│  (Catatan: admin_cabang boleh kelola master data karena katalog global)     │
+│  (Catatan: admin boleh kelola master data karena katalog bersifat global)   │
 │                                                                             │
 │  KASIR:                                                                     │
 │  → transactions.view, transactions.create, transactions.apply_discount,     │
@@ -957,7 +957,7 @@ RetailControl/
 │                                                                             │
 │  KONSEP:                                                                    │
 │  - Role GLOBAL (super_admin, owner) → branch_id = NULL → akses semua        │
-│  - Role NON-GLOBAL (admin_cabang, kasir, accounting)                        │
+│  - Role NON-GLOBAL (admin, kasir, accounting)                               │
 │    → WAJIB punya branch_id → hanya akses cabang yang ditugaskan             │
 │                                                                             │
 │  HELPER di User Model:                                                      │
@@ -1056,7 +1056,7 @@ RetailControl/
   ── Module 01 ────────────────────────────────────────────────────────────────
 
   1. RoleSeeder
-     → Buat 5 role: super_admin, owner, admin_cabang, kasir, accounting
+     → Buat 5 role: super_admin, owner, admin, kasir, accounting
      → Menggunakan updateOrCreate (idempotent/aman dijalankan berulang)
 
   2. PermissionSeeder
@@ -1070,12 +1070,12 @@ RetailControl/
   4. SuperAdminSeeder
      → Buat user default:
        - username : superadmin
-       - email    : superadmin@retailcontrol.local
+       - email    : superadmin@yopmail.com
        - password : SuperAdmin@123 (hashed)
        - role     : super_admin
        - branch   : null (global)
        - is_active: true
-     *Catatan: DatabaseSeeder akan melakukan Truncate pada tabel audit_logs setelah selesai, agar tidak ada sampah log.*
+     *Catatan: DatabaseSeeder akan menghapus isi audit_logs setelah seeding selesai, agar tidak ada sampah log.*
 
   ── Module 02 ────────────────────────────────────────────────────────────────
 

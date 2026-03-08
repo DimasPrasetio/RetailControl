@@ -52,7 +52,7 @@ class T0202BrandCategoryUomTest extends TestCase
             'is_active' => true,
         ]);
 
-        $adminRoleId = Role::where('name', 'admin_cabang')->value('id');
+        $adminRoleId = Role::where('name', 'admin')->value('id');
         $this->adminCabang = User::create([
             'name' => 'Admin Brand Test',
             'username' => 'admin_brand_test',
@@ -354,27 +354,27 @@ class T0202BrandCategoryUomTest extends TestCase
     }
 
     /** @test */
-    public function admin_cabang_can_create_brand_and_category(): void
+    public function admin_can_create_brand_and_category(): void
     {
         // Brand
         $this->actingAs($this->adminCabang)
             ->post(route('admin.brands.store'), [
-                'name' => 'Merk Admin Cabang',
+                'name' => 'Merk Admin',
                 'is_active' => 1,
             ])
             ->assertRedirect(route('admin.brands.index'));
 
-        $this->assertDatabaseHas('brands', ['name' => 'Merk Admin Cabang']);
+        $this->assertDatabaseHas('brands', ['name' => 'Merk Admin']);
 
         // Category
         $this->actingAs($this->adminCabang)
             ->post(route('admin.categories.store'), [
-                'name' => 'Kategori Admin Cabang',
+                'name' => 'Kategori Admin',
                 'code' => 'KAT_ADM',
                 'is_active' => 1,
             ])
             ->assertRedirect(route('admin.categories.index'));
 
-        $this->assertDatabaseHas('categories', ['name' => 'Kategori Admin Cabang']);
+        $this->assertDatabaseHas('categories', ['name' => 'Kategori Admin']);
     }
 }

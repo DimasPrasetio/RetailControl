@@ -13,7 +13,7 @@ use Tests\TestCase;
 /**
  * T01-4 — Role constraint
  *
- *   Given: Admin (admin_cabang) is logged in
+ *   Given: Admin is logged in
  *   When:  Admin tries to POST /admin/users (requires users.create permission)
  *   Then:  403 Forbidden
  *
@@ -36,13 +36,13 @@ class T0104RoleConstraintAndAuditImmutabilityTest extends TestCase
     // ─── T01-4 ────────────────────────────────────────────────────────────────
 
     /** @test */
-    public function admin_cabang_cannot_create_users(): void
+    public function admin_cannot_create_users(): void
     {
-        $adminRoleId = Role::where('name', 'admin_cabang')->value('id');
+        $adminRoleId = Role::where('name', 'admin')->value('id');
         $kasirRoleId = Role::where('name', 'kasir')->value('id');
 
         $admin = User::create([
-            'name'      => 'Admin Cabang Test',
+            'name'      => 'Admin Test',
             'username'  => 'admin_test',
             'email'     => 'admin_test@test.com',
             'password'  => bcrypt('Password1'),
@@ -66,13 +66,13 @@ class T0104RoleConstraintAndAuditImmutabilityTest extends TestCase
     }
 
     /** @test */
-    public function admin_cabang_can_list_users(): void
+    public function admin_can_list_users(): void
     {
-        // admin_cabang now has users.view so they can locate users to deactivate
-        $adminRoleId = Role::where('name', 'admin_cabang')->value('id');
+        // Admin now has users.view so they can locate users to deactivate
+        $adminRoleId = Role::where('name', 'admin')->value('id');
 
         $admin = User::create([
-            'name'      => 'Admin Cabang View',
+            'name'      => 'Admin View',
             'username'  => 'admin_view',
             'email'     => 'admin_view@test.com',
             'password'  => bcrypt('Password1'),

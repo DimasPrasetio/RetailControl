@@ -17,10 +17,10 @@ class SuperAdminSeeder extends Seeder
         User::updateOrCreate(
             ['username' => 'superadmin'],
             [
-                'name'      => 'Super Admin',
-                'email'     => 'superadmin@retailcontrol.local',
-                'password'  => Hash::make('SuperAdmin@123'),
-                'role_id'   => $role->id,
+                'name' => 'Super Admin',
+                'email' => 'superadmin@yopmail.com',
+                'password' => Hash::make('SuperAdmin@123'),
+                'role_id' => $role->id,
                 'branch_id' => null,
                 'is_active' => true,
             ],
