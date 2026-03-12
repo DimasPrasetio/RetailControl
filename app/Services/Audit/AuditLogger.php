@@ -28,6 +28,7 @@ class AuditLogger
     ): AuditLog {
         return AuditLog::create([
             'user_id'        => Auth::id(),
+            'tenant_id'      => $auditable->tenant_id ?? Auth::user()?->tenant_id,
             'action'         => $action,
             'auditable_type' => get_class($auditable),
             'auditable_id'   => $auditable->getKey(),

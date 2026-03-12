@@ -7,8 +7,10 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Item;
 use App\Models\Role;
+use App\Models\Tenant;
 use App\Models\Uom;
 use App\Models\User;
+use App\Models\Branch;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -34,6 +36,10 @@ class T0201ItemCrudTest extends TestCase
     private User $kasir;
     private User $adminCabang;
     private Uom  $uomPcs;
+    private Uom  $uomBox;
+    private Uom  $uomPack;
+    private int $branchId;
+    private int $tenantId;
 
     protected function setUp(): void
     {
@@ -42,6 +48,10 @@ class T0201ItemCrudTest extends TestCase
 
         $this->superAdmin = User::where('username', 'superadmin')->firstOrFail();
         $this->uomPcs     = Uom::where('code', 'PCS')->firstOrFail();
+        $this->uomBox     = Uom::where('code', 'BOX')->firstOrFail();
+        $this->uomPack    = Uom::where('code', 'PACK')->firstOrFail();
+        $this->branchId   = Branch::query()->value('id');
+        $this->tenantId   = Tenant::query()->value('id');
 
         $kasirRoleId = Role::where('name', 'kasir')->value('id');
         $this->kasir = User::create([
@@ -50,7 +60,7 @@ class T0201ItemCrudTest extends TestCase
             'email'     => null,
             'password'  => bcrypt('Password1'),
             'role_id'   => $kasirRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
 
@@ -61,7 +71,7 @@ class T0201ItemCrudTest extends TestCase
             'email'     => null,
             'password'  => bcrypt('Password1'),
             'role_id'   => $adminRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
     }
@@ -73,6 +83,7 @@ class T0201ItemCrudTest extends TestCase
     {
         $this->actingAs($this->superAdmin)
             ->post(route('admin.items.store'), [
+                'tenant_id'   => $this->tenantId,
                 'sku_code'    => 'TEST-001',
                 'name'        => 'Produk Test Satu',
                 'base_uom_id' => $this->uomPcs->id,
@@ -87,6 +98,13 @@ class T0201ItemCrudTest extends TestCase
 
         $item = Item::where('sku_code', 'TEST-001')->firstOrFail();
 
+        $this->assertDatabaseHas('item_units', [
+            'item_id' => $item->id,
+            'uom_id' => $this->uomPcs->id,
+            'is_base' => true,
+            'is_default_sale' => true,
+        ]);
+
         // Audit log: action=create
         $this->assertDatabaseHas('audit_logs', [
             'action'         => 'create',
@@ -100,6 +118,7 @@ class T0201ItemCrudTest extends TestCase
     {
         $this->actingAs($this->superAdmin)
             ->post(route('admin.items.store'), [
+                'tenant_id' => $this->tenantId,
                 'sku_code' => 'TEST-NO-UOM',
                 'name'     => 'Produk Tanpa UoM',
                 // base_uom_id missing
@@ -110,11 +129,94 @@ class T0201ItemCrudTest extends TestCase
     }
 
     /** @test */
+    public function super_admin_can_create_an_item_with_multiple_sale_units(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->post(route('admin.items.store'), [
+                'tenant_id' => $this->tenantId,
+                'sku_code' => 'MULTI-001',
+                'name' => 'Produk Multi Satuan',
+                'base_uom_id' => $this->uomPcs->id,
+                'selling_uom_id' => $this->uomBox->id,
+                'purchase_uom_id' => $this->uomBox->id,
+                'item_units' => [
+                    ['uom_id' => $this->uomBox->id, 'conversion_qty' => 24, 'allow_sale' => 1, 'allow_purchase' => 1],
+                    ['uom_id' => $this->uomPack->id, 'conversion_qty' => 6, 'allow_sale' => 1],
+                ],
+                'is_active' => 1,
+            ])
+            ->assertRedirect(route('admin.items.index'));
+
+        $item = Item::where('sku_code', 'MULTI-001')->firstOrFail();
+
+        $this->assertSame((string) $this->uomBox->id, (string) $item->selling_uom_id);
+        $this->assertSame((string) $this->uomBox->id, (string) $item->purchase_uom_id);
+        $this->assertSame('24.0000', (string) $item->pack_qty);
+
+        $this->assertDatabaseHas('item_units', [
+            'item_id' => $item->id,
+            'uom_id' => $this->uomPcs->id,
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
+
+        $this->assertDatabaseHas('item_units', [
+            'item_id' => $item->id,
+            'uom_id' => $this->uomBox->id,
+            'conversion_qty' => 24,
+            'allow_sale' => true,
+            'allow_purchase' => true,
+            'is_default_sale' => true,
+            'is_default_purchase' => true,
+        ]);
+
+        $this->assertDatabaseHas('item_units', [
+            'item_id' => $item->id,
+            'uom_id' => $this->uomPack->id,
+            'conversion_qty' => 6,
+            'allow_sale' => true,
+        ]);
+    }
+
+    /** @test */
+    public function default_selling_uom_must_exist_in_the_defined_item_units(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->post(route('admin.items.store'), [
+                'tenant_id' => $this->tenantId,
+                'sku_code' => 'MULTI-ERR-001',
+                'name' => 'Produk Salah Konfigurasi',
+                'base_uom_id' => $this->uomPcs->id,
+                'selling_uom_id' => $this->uomBox->id,
+                'is_active' => 1,
+            ])
+            ->assertSessionHasErrors('selling_uom_id');
+
+        $this->assertDatabaseMissing('items', ['sku_code' => 'MULTI-ERR-001']);
+    }
+
+    /** @test */
+    public function super_admin_must_choose_tenant_when_creating_an_item(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->post(route('admin.items.store'), [
+                'sku_code'    => 'TEST-NO-TENANT',
+                'name'        => 'Produk Tanpa Tenant',
+                'base_uom_id' => $this->uomPcs->id,
+                'is_active'   => 1,
+            ])
+            ->assertSessionHasErrors('tenant_id');
+
+        $this->assertDatabaseMissing('items', ['sku_code' => 'TEST-NO-TENANT']);
+    }
+
+    /** @test */
     public function duplicate_sku_code_is_rejected(): void
     {
         // First item
         $this->actingAs($this->superAdmin)
             ->post(route('admin.items.store'), [
+                'tenant_id'   => $this->tenantId,
                 'sku_code'    => 'DUPLI-001',
                 'name'        => 'Produk Pertama',
                 'base_uom_id' => $this->uomPcs->id,
@@ -124,6 +226,7 @@ class T0201ItemCrudTest extends TestCase
         // Second item with same sku_code
         $this->actingAs($this->superAdmin)
             ->post(route('admin.items.store'), [
+                'tenant_id'   => $this->tenantId,
                 'sku_code'    => 'DUPLI-001',
                 'name'        => 'Produk Duplikat',
                 'base_uom_id' => $this->uomPcs->id,
@@ -175,6 +278,7 @@ class T0201ItemCrudTest extends TestCase
     public function super_admin_can_update_an_item(): void
     {
         $item = Item::create([
+            'tenant_id'   => $this->tenantId,
             'sku_code'    => 'UPD-001',
             'name'        => 'Nama Lama',
             'base_uom_id' => $this->uomPcs->id,
@@ -207,6 +311,7 @@ class T0201ItemCrudTest extends TestCase
     public function kasir_cannot_update_an_item(): void
     {
         $item = Item::create([
+            'tenant_id'   => $this->tenantId,
             'sku_code'    => 'RO-001',
             'name'        => 'Produk Readonly',
             'base_uom_id' => $this->uomPcs->id,
@@ -228,6 +333,7 @@ class T0201ItemCrudTest extends TestCase
     public function super_admin_can_deactivate_an_item(): void
     {
         $item = Item::create([
+            'tenant_id'   => $this->tenantId,
             'sku_code'    => 'DEACT-001',
             'name'        => 'Produk Aktif',
             'base_uom_id' => $this->uomPcs->id,
@@ -255,6 +361,7 @@ class T0201ItemCrudTest extends TestCase
     public function kasir_cannot_deactivate_an_item(): void
     {
         $item = Item::create([
+            'tenant_id'   => $this->tenantId,
             'sku_code'    => 'DEACT-002',
             'name'        => 'Produk Aktif 2',
             'base_uom_id' => $this->uomPcs->id,
@@ -275,6 +382,7 @@ class T0201ItemCrudTest extends TestCase
     public function admin_can_deactivate_an_item(): void
     {
         $item = Item::create([
+            'tenant_id'   => $this->tenantId,
             'sku_code'    => 'DEACT-003',
             'name'        => 'Produk Cabang',
             'base_uom_id' => $this->uomPcs->id,
@@ -297,6 +405,7 @@ class T0201ItemCrudTest extends TestCase
     public function super_admin_can_view_item_detail(): void
     {
         $item = Item::create([
+            'tenant_id'   => $this->tenantId,
             'sku_code'    => 'SHOW-001',
             'name'        => 'Produk Detail',
             'base_uom_id' => $this->uomPcs->id,
@@ -313,8 +422,8 @@ class T0201ItemCrudTest extends TestCase
     /** @test */
     public function items_index_filters_by_active_status(): void
     {
-        Item::create(['sku_code' => 'ACT-001',   'name' => 'Produk Masih Aktif',     'base_uom_id' => $this->uomPcs->id, 'is_active' => true]);
-        Item::create(['sku_code' => 'INACT-001', 'name' => 'Produk Sudah Dimatikan', 'base_uom_id' => $this->uomPcs->id, 'is_active' => false]);
+        Item::create(['tenant_id' => $this->tenantId, 'sku_code' => 'ACT-001',   'name' => 'Produk Masih Aktif',     'base_uom_id' => $this->uomPcs->id, 'is_active' => true]);
+        Item::create(['tenant_id' => $this->tenantId, 'sku_code' => 'INACT-001', 'name' => 'Produk Sudah Dimatikan', 'base_uom_id' => $this->uomPcs->id, 'is_active' => false]);
 
         $response = $this->actingAs($this->superAdmin)
             ->get(route('admin.items.index', ['active' => '1']));

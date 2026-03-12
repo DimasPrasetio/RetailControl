@@ -3,6 +3,7 @@
 namespace Tests\Feature\Module01;
 
 use App\Models\AuditLog;
+use App\Models\Branch;
 use App\Models\Role;
 use App\Models\User;
 use App\Enums\AuditActionEnum;
@@ -27,10 +28,13 @@ class T0104RoleConstraintAndAuditImmutabilityTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $branchId;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->seed(DatabaseSeeder::class);
+        $this->branchId = Branch::query()->value('id');
     }
 
     // ─── T01-4 ────────────────────────────────────────────────────────────────
@@ -47,7 +51,7 @@ class T0104RoleConstraintAndAuditImmutabilityTest extends TestCase
             'email'     => 'admin_test@test.com',
             'password'  => bcrypt('Password1'),
             'role_id'   => $adminRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
 
@@ -59,7 +63,7 @@ class T0104RoleConstraintAndAuditImmutabilityTest extends TestCase
                 'password'              => 'Password1',
                 'password_confirmation' => 'Password1',
                 'role_id'               => $kasirRoleId,
-                'branch_id'             => 1,
+                'branch_id'             => $this->branchId,
                 'is_active'             => 1,
             ])
             ->assertForbidden();
@@ -77,7 +81,7 @@ class T0104RoleConstraintAndAuditImmutabilityTest extends TestCase
             'email'     => 'admin_view@test.com',
             'password'  => bcrypt('Password1'),
             'role_id'   => $adminRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
 
@@ -97,7 +101,7 @@ class T0104RoleConstraintAndAuditImmutabilityTest extends TestCase
             'email'     => 'kasir_noaccess@test.com',
             'password'  => bcrypt('Password1'),
             'role_id'   => $kasirRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
 
@@ -166,7 +170,7 @@ class T0104RoleConstraintAndAuditImmutabilityTest extends TestCase
             'email'     => 'kasir_inactive@test.com',
             'password'  => bcrypt('Password1'),
             'role_id'   => $kasirRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => false, // nonaktif
         ]);
 

@@ -50,16 +50,62 @@
                             class="font-medium text-gray-900">{{ $item->brand?->name ?? '-' }}</span></div>
                     <div><span class="text-gray-600">Kategori:</span> <span
                             class="font-medium text-gray-900">{{ $item->category?->name ?? '-' }}</span></div>
-                    <div><span class="text-gray-600">Satuan Jual:</span> <span
+                    <div><span class="text-gray-600">Satuan Dasar Stok:</span> <span
                             class="font-mono font-semibold text-blue-700">{{ $item->baseUom->code }}</span></div>
-                    <div><span class="text-gray-600">Satuan Beli:</span> <span
-                            class="font-mono text-gray-800">{{ $item->purchaseUom?->code ?? '(sama)' }}</span></div>
-                    <div><span class="text-gray-600">Pack Qty:</span> <span
+                    <div><span class="text-gray-600">Default Jual:</span> <span
+                            class="font-mono text-gray-800">{{ $item->sellingUom?->code ?? $item->baseUom->code }}</span>
+                    </div>
+                    <div><span class="text-gray-600">Default Beli:</span> <span
+                            class="font-mono text-gray-800">{{ $item->purchaseUom?->code ?? '-' }}</span></div>
+                    <div><span class="text-gray-600">Konversi Beli Default:</span> <span
                             class="font-medium text-gray-900">{{ $item->pack_qty }}</span></div>
                     <div><span class="text-gray-600">PPN:</span> <span
                             class="font-medium text-gray-900">{{ $item->tax_included ? 'Sudah termasuk' : 'Tidak termasuk' }}</span>
                     </div>
                 </div>
+
+                @if($item->itemUnits->isNotEmpty())
+                    <hr class="my-4 border-gray-100">
+                    <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-600">Satuan Produk</h3>
+                    <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr class="border-b border-gray-100 text-left">
+                                    <th class="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Satuan
+                                    </th>
+                                    <th class="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Konversi
+                                        ke Dasar</th>
+                                    <th class="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Peran
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                @foreach($item->itemUnits as $unit)
+                                    <tr>
+                                        <td class="px-4 py-2 font-mono font-semibold text-gray-900">{{ $unit->uom->code }}</td>
+                                        <td class="px-4 py-2 text-gray-700">{{ $unit->conversion_qty }}</td>
+                                        <td class="px-4 py-2 text-gray-700">
+                                            @php
+                                                $badges = [];
+                                                if ($unit->is_base)
+                                                    $badges[] = 'stok dasar';
+                                                if ($unit->allow_sale)
+                                                    $badges[] = 'jual';
+                                                if ($unit->allow_purchase)
+                                                    $badges[] = 'beli';
+                                                if ($unit->is_default_sale)
+                                                    $badges[] = 'default jual';
+                                                if ($unit->is_default_purchase)
+                                                    $badges[] = 'default beli';
+                                            @endphp
+                                            {{ implode(' • ', $badges) }}
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
 
                 @if($item->attributes_json)
                     <hr class="my-4 border-gray-100">
@@ -84,6 +130,7 @@
                         <thead>
                             <tr class="border-b border-gray-100">
                                 <th class="pb-2 text-left text-xs font-semibold text-gray-600">Price List</th>
+                                <th class="pb-2 text-left text-xs font-semibold text-gray-600">Satuan</th>
                                 <th class="pb-2 text-right text-xs font-semibold text-gray-600">Harga</th>
                             </tr>
                         </thead>
@@ -91,6 +138,8 @@
                             @foreach($item->priceListItems as $pli)
                                 <tr>
                                     <td class="py-2 text-gray-700">{{ $pli->priceList->name }}</td>
+                                    <td class="py-2 text-gray-700 font-mono">
+                                        {{ $pli->priceUom?->code ?? $item->sellingUom?->code ?? $item->baseUom->code }}</td>
                                     <td class="py-2 text-right font-semibold text-gray-900">Rp
                                         {{ number_format($pli->sell_price, 0, ',', '.') }}
                                     </td>
@@ -100,6 +149,56 @@
                     </table>
                 </div>
             @endif
+
+            {{-- Barcode / QR Code --}}
+            <div class="rounded-2xl bg-white p-6 shadow-xl shadow-indigo-500/10 border border-slate-300">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-600">
+                        Barcode / QR Code
+                        <span class="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+                            {{ $item->barcodes->count() }}
+                        </span>
+                    </h3>
+                    @can('manageBarcodes', $item)
+                        <a href="{{ route('admin.items.barcodes.index', $item) }}"
+                            class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100">
+                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            Kelola Barcode
+                        </a>
+                    @endcan
+                </div>
+                @forelse($item->barcodes as $barcode)
+                    <div
+                        class="mb-2 flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 last:mb-0">
+                        <svg class="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                            stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12v.01M12 4h.01M4 4h4v4H4V4zm12 0h4v4h-4V4zM4 16h4v4H4v-4z" />
+                        </svg>
+                        <span class="font-mono text-sm text-gray-800 flex-1 truncate">{{ $barcode->barcode }}</span>
+                        @if($barcode->itemUnit)
+                            <span class="text-xs text-gray-500 font-mono">{{ $barcode->itemUnit->uom->code }}</span>
+                        @endif
+                        @if($barcode->is_primary)
+                            <span
+                                class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>Utama
+                            </span>
+                        @endif
+                    </div>
+                @empty
+                    <p class="text-xs text-gray-400">Belum ada barcode.
+                        @can('manageBarcodes', $item)
+                            <a href="{{ route('admin.items.barcodes.index', $item) }}"
+                                class="text-indigo-600 hover:underline">Tambah sekarang</a>
+                        @endcan
+                    </p>
+                @endforelse
+            </div>
         </div>
 
         {{-- Audit Log --}}

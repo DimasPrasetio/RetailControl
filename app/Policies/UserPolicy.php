@@ -6,7 +6,6 @@ use App\Models\User;
 
 class UserPolicy
 {
-    /** Hanya Super Admin yang dapat melihat daftar user */
     public function viewAny(User $authUser): bool
     {
         return $authUser->hasPermission('users.view');
@@ -14,7 +13,11 @@ class UserPolicy
 
     public function view(User $authUser, User $target): bool
     {
-        return $authUser->hasPermission('users.view');
+        if (! $authUser->hasPermission('users.view')) {
+            return false;
+        }
+
+        return $this->canAccessTarget($authUser, $target);
     }
 
     public function create(User $authUser): bool
@@ -28,55 +31,57 @@ class UserPolicy
             return false;
         }
 
-        // Tidak boleh mengubah Super Admin lain (kecuali dirinya sendiri)
         if ($target->isSuperAdmin() && $authUser->id !== $target->id) {
             return false;
         }
 
-        return true;
+        return $this->canAccessTarget($authUser, $target);
     }
 
-    /**
-     * Nonaktifkan user (set is_active=false).
-     * Berbeda dari delete: user tetap ada di DB tapi tidak bisa login.
-     * EnsureUserIsActive middleware akan mengusir sesi yang masih aktif.
-     */
     public function deactivate(User $authUser, User $target): bool
     {
         if (! $authUser->hasPermission('users.deactivate')) {
             return false;
         }
 
-        // Tidak boleh menonaktifkan diri sendiri
         if ($authUser->id === $target->id) {
             return false;
         }
 
-        // Tidak boleh menonaktifkan Super Admin lain
         if ($target->isSuperAdmin()) {
             return false;
         }
 
-        return true;
+        return $this->canAccessTarget($authUser, $target);
     }
 
-    /** Hapus permanen (soft delete) — hanya super_admin via permission users.delete */
     public function delete(User $authUser, User $target): bool
     {
         if (! $authUser->hasPermission('users.delete')) {
             return false;
         }
 
-        // Tidak boleh menghapus diri sendiri
         if ($authUser->id === $target->id) {
             return false;
         }
 
-        // Tidak boleh menghapus Super Admin lain
         if ($target->isSuperAdmin()) {
             return false;
         }
 
-        return true;
+        return $this->canAccessTarget($authUser, $target);
+    }
+
+    private function canAccessTarget(User $authUser, User $target): bool
+    {
+        if (! $authUser->canAccessTenant($target->tenant_id)) {
+            return false;
+        }
+
+        if ($authUser->isGlobal()) {
+            return true;
+        }
+
+        return $target->branch_id !== null && $authUser->canAccessBranch($target->branch_id);
     }
 }

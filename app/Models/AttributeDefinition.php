@@ -2,11 +2,17 @@
 
 namespace App\Models;
 
+use App\Traits\Auditable;
+use App\Traits\TenantScoped;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AttributeDefinition extends Model
 {
+    use Auditable, TenantScoped;
+
     protected $fillable = [
+        'tenant_id',
         'key',
         'label',
         'data_type',
@@ -19,6 +25,11 @@ class AttributeDefinition extends Model
         'options_json' => 'array',
         'is_required'  => 'boolean',
     ];
+
+    public function tenant(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::class);
+    }
 
     public function categories()
     {

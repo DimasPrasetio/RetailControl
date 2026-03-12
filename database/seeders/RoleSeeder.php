@@ -12,24 +12,20 @@ class RoleSeeder extends Seeder
     {
         $roles = [
             [
-                'name'        => RoleEnum::SuperAdmin->value,
+                'name' => RoleEnum::SuperAdmin->value,
                 'description' => 'Akses penuh ke seluruh sistem.',
             ],
             [
-                'name'        => RoleEnum::Owner->value,
+                'name' => RoleEnum::Owner->value,
                 'description' => 'Visibilitas penuh ke semua cabang (read-only operasional).',
             ],
             [
-                'name'        => RoleEnum::Admin->value,
+                'name' => RoleEnum::Admin->value,
                 'description' => 'Kelola operasional cabang yang ditugaskan.',
             ],
             [
-                'name'        => RoleEnum::Kasir->value,
+                'name' => RoleEnum::Kasir->value,
                 'description' => 'Input transaksi POS di cabang yang ditugaskan.',
-            ],
-            [
-                'name'        => RoleEnum::Accounting->value,
-                'description' => 'Akses laporan keuangan.',
             ],
         ];
 

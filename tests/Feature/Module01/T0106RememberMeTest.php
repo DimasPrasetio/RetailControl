@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Module01;
 
+use App\Models\Branch;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -24,6 +25,7 @@ class T0106RememberMeTest extends TestCase
     use RefreshDatabase;
 
     private User $superAdmin;
+    private int $branchId;
 
     protected function setUp(): void
     {
@@ -31,6 +33,7 @@ class T0106RememberMeTest extends TestCase
         $this->seed(DatabaseSeeder::class);
 
         $this->superAdmin = User::where('username', 'superadmin')->firstOrFail();
+        $this->branchId = Branch::query()->value('id');
     }
 
     /** @test */
@@ -40,7 +43,7 @@ class T0106RememberMeTest extends TestCase
 
         $this->post(route('login.store'), [
             'login'    => 'superadmin',
-            'password' => 'SuperAdmin@123',
+            'password' => 'superadmin',
             'remember' => '1',
         ])->assertRedirect(route('dashboard'));
 
@@ -53,7 +56,7 @@ class T0106RememberMeTest extends TestCase
     {
         $response = $this->post(route('login.store'), [
             'login'    => 'superadmin',
-            'password' => 'SuperAdmin@123',
+            'password' => 'superadmin',
             // tidak ada 'remember'
         ]);
 
@@ -77,7 +80,7 @@ class T0106RememberMeTest extends TestCase
     {
         $response = $this->post(route('login.store'), [
             'login'    => 'superadmin',
-            'password' => 'SuperAdmin@123',
+            'password' => 'superadmin',
             'remember' => '1',
         ]);
 
@@ -117,7 +120,7 @@ class T0106RememberMeTest extends TestCase
             'email'     => 'kasir@toko.com',
             'password'  => bcrypt('Password1'),
             'role_id'   => $kasirRole->id,
-            'branch_id' => null,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
 
@@ -157,7 +160,7 @@ class T0106RememberMeTest extends TestCase
     {
         $response = $this->post(route('login.store'), [
             'login'    => 'superadmin',
-            'password' => 'SuperAdmin@123',
+            'password' => 'superadmin',
             'remember' => '0',
         ]);
 

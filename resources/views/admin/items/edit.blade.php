@@ -5,17 +5,17 @@
 
 @section('content')
 
-    <div class="mx-auto max-w-2xl">
-        <div class="rounded-2xl bg-white p-6 shadow-xl shadow-indigo-500/10 border border-slate-300">
+    <div class="mx-auto max-w-3xl">
+        <div class="rounded-2xl border border-slate-300 bg-white p-6 shadow-xl shadow-indigo-500/10">
             <form method="POST" action="{{ route('admin.items.update', $item) }}">
-                @csrf @method('PUT')
+                @csrf
+                @method('PUT')
 
                 <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-600">Identitas Produk</h3>
 
                 <div class="mb-4 grid grid-cols-2 gap-4">
                     <div>
-                        <label class="mb-1.5 block text-sm font-medium text-gray-700">SKU Code <span
-                                class="text-red-500">*</span></label>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">SKU Code <span class="text-red-500">*</span></label>
                         <input type="text" name="sku_code" value="{{ old('sku_code', $item->sku_code) }}"
                             class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm uppercase shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100 @error('sku_code') border-red-400 @enderror">
                         @error('sku_code')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
@@ -23,15 +23,15 @@
                     <div>
                         <label class="mb-1.5 block text-sm font-medium text-gray-700">Status</label>
                         <div class="flex items-center gap-2 pt-3">
-                            <input type="checkbox" name="is_active" id="is_active" value="1" {{ old('is_active', $item->is_active) ? 'checked' : '' }} class="h-4 w-4 rounded border-gray-300 text-blue-600">
+                            <input type="checkbox" name="is_active" id="is_active" value="1" {{ old('is_active', $item->is_active) ? 'checked' : '' }}
+                                class="h-4 w-4 rounded border-gray-300 text-blue-600">
                             <label for="is_active" class="text-sm text-gray-700">Aktif</label>
                         </div>
                     </div>
                 </div>
 
                 <div class="mb-4">
-                    <label class="mb-1.5 block text-sm font-medium text-gray-700">Nama Produk <span
-                            class="text-red-500">*</span></label>
+                    <label class="mb-1.5 block text-sm font-medium text-gray-700">Nama Produk <span class="text-red-500">*</span></label>
                     <input type="text" name="name" value="{{ old('name', $item->name) }}"
                         class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100 @error('name') border-red-400 @enderror">
                     @error('name')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
@@ -40,23 +40,19 @@
                 <div class="mb-6 grid grid-cols-2 gap-4">
                     <div>
                         <label class="mb-1.5 block text-sm font-medium text-gray-700">Brand</label>
-                        <select name="brand_id"
-                            class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
-                            <option value="">— Tidak ada —</option>
-                            @foreach($brands as $b)
-                                <option value="{{ $b->id }}" {{ old('brand_id', $item->brand_id) == $b->id ? 'selected' : '' }}>
-                                    {{ $b->name }}
-                                </option>
+                        <select name="brand_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
+                            <option value="">- Tidak ada -</option>
+                            @foreach($brands as $brand)
+                                <option value="{{ $brand->id }}" {{ old('brand_id', $item->brand_id) == $brand->id ? 'selected' : '' }}>{{ $brand->name }}</option>
                             @endforeach
                         </select>
                     </div>
                     <div>
                         <label class="mb-1.5 block text-sm font-medium text-gray-700">Kategori</label>
-                        <select name="category_id"
-                            class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
-                            <option value="">— Tidak ada —</option>
-                            @foreach($categories as $c)
-                                <option value="{{ $c->id }}" {{ old('category_id', $item->category_id) == $c->id ? 'selected' : '' }}>{{ $c->name }}</option>
+                        <select name="category_id" id="category_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
+                            <option value="">- Tidak ada -</option>
+                            @foreach($categories as $category)
+                                <option value="{{ $category->id }}" {{ old('category_id', $item->category_id) == $category->id ? 'selected' : '' }}>{{ $category->name }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -64,93 +60,105 @@
 
                 <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-600">Unit & Kemasan</h3>
 
-                <div class="mb-6 grid grid-cols-3 gap-4">
+                <div class="mb-4 grid grid-cols-3 gap-4">
                     <div>
-                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Satuan Jual <span
-                                class="text-red-500">*</span></label>
-                        <select name="base_uom_id"
-                            class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 @error('base_uom_id') border-red-400 @enderror">
-                            @foreach($uoms as $u)
-                                <option value="{{ $u->id }}" {{ old('base_uom_id', $item->base_uom_id) == $u->id ? 'selected' : '' }}>{{ $u->code }}</option>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Satuan Dasar Stok <span class="text-red-500">*</span></label>
+                        <select name="base_uom_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 @error('base_uom_id') border-red-400 @enderror">
+                            @foreach($uoms as $uom)
+                                <option value="{{ $uom->id }}" {{ old('base_uom_id', $item->base_uom_id) == $uom->id ? 'selected' : '' }}>{{ $uom->code }}</option>
                             @endforeach
                         </select>
+                        @error('base_uom_id')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                        <p class="mt-1 text-xs text-gray-500">Semua ledger stok tetap dicatat dalam satuan ini.</p>
                     </div>
                     <div>
-                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Satuan Beli</label>
-                        <select name="purchase_uom_id"
-                            class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
-                            <option value="">— Sama dengan jual —</option>
-                            @foreach($uoms as $u)
-                                <option value="{{ $u->id }}" {{ old('purchase_uom_id', $item->purchase_uom_id) == $u->id ? 'selected' : '' }}>{{ $u->code }}</option>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Default Satuan Jual</label>
+                        <select name="selling_uom_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 @error('selling_uom_id') border-red-400 @enderror">
+                            <option value="">- Ikuti satuan dasar stok -</option>
+                            @foreach($uoms as $uom)
+                                <option value="{{ $uom->id }}" {{ old('selling_uom_id', $item->selling_uom_id ?: $item->base_uom_id) == $uom->id ? 'selected' : '' }}>{{ $uom->code }}</option>
                             @endforeach
                         </select>
+                        @error('selling_uom_id')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Pack Qty</label>
-                        <input type="number" name="pack_qty" value="{{ old('pack_qty', $item->pack_qty) }}" min="0.0001"
-                            step="0.0001"
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Default Satuan Beli</label>
+                        <select name="purchase_uom_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
+                            <option value="">- Tidak diatur -</option>
+                            @foreach($uoms as $uom)
+                                <option value="{{ $uom->id }}" {{ old('purchase_uom_id', $item->purchase_uom_id) == $uom->id ? 'selected' : '' }}>{{ $uom->code }}</option>
+                            @endforeach
+                        </select>
+                        @error('purchase_uom_id')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+
+                <div class="mb-6 rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 p-4">
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                            <h4 class="text-sm font-semibold text-gray-800">Satuan Tambahan</h4>
+                            <p class="text-xs text-gray-500">Setiap satuan tambahan disimpan dengan konversi eksplisit ke satuan dasar stok.</p>
+                        </div>
+                        <button type="button" onclick="addUnitRow()"
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-blue-400 hover:text-blue-600">
+                            Tambah Satuan
+                        </button>
+                    </div>
+                    @error('item_units')<p class="mb-2 text-xs text-red-500">{{ $message }}</p>@enderror
+                    <div id="item-unit-rows" class="space-y-3"></div>
+                </div>
+
+                <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-600">Harga & Stok</h3>
+                <p class="mb-3 text-xs text-gray-500">Harga normal dan harga minimum mengikuti default satuan jual.</p>
+
+                <div class="mb-4 grid grid-cols-3 gap-4">
+                    <div>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Harga Modal</label>
+                        <input type="number" name="cost_price" value="{{ old('cost_price', $item->cost_price) }}" min="0" step="0.01"
+                            class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
+                    </div>
+                    <div>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Harga Jual Normal</label>
+                        <input type="number" name="selling_price" value="{{ old('selling_price', $item->selling_price) }}" min="0" step="0.01"
+                            class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
+                    </div>
+                    <div>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Harga Minimum</label>
+                        <input type="number" name="minimum_selling_price" value="{{ old('minimum_selling_price', $item->minimum_selling_price) }}" min="0" step="0.01"
                             class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
                     </div>
                 </div>
 
+                <div class="mb-6 flex items-center gap-2">
+                    <input type="checkbox" name="is_stockable" id="is_stockable" value="1" {{ old('is_stockable', $item->is_stockable) ? 'checked' : '' }}
+                        class="h-4 w-4 rounded border-gray-300 text-blue-600">
+                    <label for="is_stockable" class="text-sm text-gray-700">Produk ini mempengaruhi stok</label>
+                </div>
+
                 <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-600">Pajak</h3>
                 <div class="mb-6 flex items-center gap-2">
-                    <input type="checkbox" name="tax_included" id="tax_included" value="1" {{ old('tax_included', $item->tax_included) ? 'checked' : '' }} class="h-4 w-4 rounded border-gray-300 text-blue-600">
+                    <input type="checkbox" name="tax_included" id="tax_included" value="1" {{ old('tax_included', $item->tax_included) ? 'checked' : '' }}
+                        class="h-4 w-4 rounded border-gray-300 text-blue-600">
                     <label for="tax_included" class="text-sm text-gray-700">Harga sudah termasuk PPN</label>
                 </div>
 
-                {{-- Section: Spesifikasi Produk --}}
                 <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-gray-600">Spesifikasi Produk</h3>
-                <p class="mb-3 text-xs text-gray-500">Detail teknis produk, seperti model, bahan, kapasitas, dll.</p>
-                <div id="attr-rows" class="mb-4 space-y-2">
-                    @php $attrs = old('attr_keys') ? array_combine(old('attr_keys', []), old('attr_values', [])) : ($item->attributes_json ?? []); @endphp
-                    @forelse($attrs as $key => $val)
-                        <div class="flex items-center gap-2 attr-row">
-                            <input type="text" name="attr_keys[]" value="{{ $key }}" placeholder="Nama Spesifikasi"
-                                class="w-2/5 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
-                            <input type="text" name="attr_values[]" value="{{ $val }}" placeholder="Keterangan"
-                                class="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
-                            <button type="button" onclick="this.closest('.attr-row').remove()"
-                                class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-red-50 hover:text-red-500">
-                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-                    @empty
-                        <div class="flex items-center gap-2 attr-row">
-                            <input type="text" name="attr_keys[]" placeholder="Nama Spesifikasi (misal: Model)"
-                                class="w-2/5 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
-                            <input type="text" name="attr_values[]" placeholder="Keterangan (misal: RC-70)"
-                                class="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
-                            <button type="button" onclick="this.closest('.attr-row').remove()"
-                                class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-red-50 hover:text-red-500">
-                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-                    @endforelse
-                </div>
-                <button type="button" onclick="addAttrRow()"
-                    class="mb-6 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-blue-400 hover:text-blue-600">
-                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-                    </svg>
-                    Tambah Spesifikasi
-                </button>
+                <p class="mb-3 text-xs text-gray-500">Field spesifikasi akan mengikuti kategori yang dipilih.</p>
+                <div id="category-attributes" class="mb-6 space-y-4"></div>
 
-                {{-- Section: Informasi Tambahan --}}
-                <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-gray-600">Informasi Tambahan <span
-                        class="text-xs font-normal normal-case text-gray-500">(opsional)</span></h3>
-                <p class="mb-3 text-xs text-gray-500">Detail lain di luar spesifikasi utama, misal: warna, garansi, dll.</p>
-                <div id="custom-rows" class="mb-4 space-y-2">
-                    @php $customs = old('custom_keys') ? array_combine(old('custom_keys', []), old('custom_values', [])) : ($item->custom_fields_json ?? []); @endphp
-                    @forelse($customs as $key => $val)
+                <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-gray-600">Informasi Tambahan <span class="text-xs font-normal normal-case text-gray-500">(opsional)</span></h3>
+                <p class="mb-3 text-xs text-gray-500">Detail lain di luar spesifikasi utama, misalnya warna, garansi, atau catatan lapangan.</p>
+                <div id="custom-rows" class="mb-6 space-y-2">
+                    @php
+                        $customs = old('custom_keys')
+                            ? array_combine(old('custom_keys', []), old('custom_values', []))
+                            : ($item->custom_fields_json ?? []);
+                    @endphp
+                    @forelse($customs as $key => $value)
                         <div class="flex items-center gap-2 custom-row">
-                            <input type="text" name="custom_keys[]" value="{{ $key }}" placeholder="Informasi"
+                            <input type="text" name="custom_keys[]" value="{{ $key }}"
                                 class="w-2/5 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
-                            <input type="text" name="custom_values[]" value="{{ $val }}" placeholder="Keterangan"
+                            <input type="text" name="custom_values[]" value="{{ $value }}"
                                 class="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
                             <button type="button" onclick="this.closest('.custom-row').remove()"
                                 class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-red-50 hover:text-red-500">
@@ -161,9 +169,9 @@
                         </div>
                     @empty
                         <div class="flex items-center gap-2 custom-row">
-                            <input type="text" name="custom_keys[]" placeholder="Informasi (misal: Warna)"
+                            <input type="text" name="custom_keys[]" placeholder="Informasi"
                                 class="w-2/5 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
-                            <input type="text" name="custom_values[]" placeholder="Keterangan (misal: Hijau Daun)"
+                            <input type="text" name="custom_values[]" placeholder="Keterangan"
                                 class="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
                             <button type="button" onclick="this.closest('.custom-row').remove()"
                                 class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-red-50 hover:text-red-500">
@@ -176,24 +184,18 @@
                 </div>
                 <button type="button" onclick="addCustomRow()"
                     class="mb-6 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-blue-400 hover:text-blue-600">
-                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-                    </svg>
                     Tambah Detail Tambahan
                 </button>
 
-                {{-- Imported Data (read-only) --}}
                 @if($item->raw_source_json)
-                    <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-gray-600">Data Pemasok Eksternal <span
-                            class="text-xs font-normal normal-case text-gray-500">(diimpor secara otomatis)</span></h3>
-                    <div class="mb-6 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden text-sm">
+                    <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-gray-600">Data Import</h3>
+                    <div class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm text-sm">
                         <table class="min-w-full text-sm">
                             <tbody class="divide-y divide-gray-100">
-                                @foreach($item->raw_source_json as $key => $val)
+                                @foreach($item->raw_source_json as $key => $value)
                                     <tr>
-                                        <td class="px-4 py-2 font-medium text-gray-600 whitespace-nowrap w-1/3">
-                                            {{ ucwords(str_replace('_', ' ', $key)) }}</td>
-                                        <td class="px-4 py-2 text-gray-800">{{ is_array($val) ? implode(', ', $val) : $val }}</td>
+                                        <td class="w-1/3 whitespace-nowrap px-4 py-2 font-medium text-gray-600">{{ ucwords(str_replace('_', ' ', $key)) }}</td>
+                                        <td class="px-4 py-2 text-gray-800">{{ is_array($value) ? implode(', ', $value) : $value }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -203,47 +205,136 @@
 
                 <div class="flex gap-3">
                     <button type="submit"
-                        class="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/25 transition hover:from-blue-500 hover:to-indigo-500">Simpan
-                        Perubahan</button>
+                        class="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/25 transition hover:from-blue-500 hover:to-indigo-500">
+                        Simpan Perubahan
+                    </button>
                     <a href="{{ route('admin.items.show', $item) }}"
-                        class="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50">Batal</a>
+                        class="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50">
+                        Batal
+                    </a>
                 </div>
             </form>
         </div>
     </div>
 
     <script>
-        function addAttrRow() {
-            const container = document.getElementById('attr-rows');
-            const row = document.createElement('div');
-            row.className = 'flex items-center gap-2 attr-row';
-            row.innerHTML = `
-                    <input type="text" name="attr_keys[]" placeholder="Nama Spesifikasi (misal: Model)"
-                        class="w-2/5 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
-                    <input type="text" name="attr_values[]" placeholder="Keterangan (misal: RC-70)"
-                        class="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
-                    <button type="button" onclick="this.closest('.attr-row').remove()"
-                        class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-red-50 hover:text-red-500">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>`;
-            container.appendChild(row);
-        }
+        const categoryAttributes = @json($categoryAttributes);
+        const initialAttributes = @json(old('attributes', $item->attributes_json ?? []));
+        const unitRowsSeed = @json(old('item_units', $itemUnitRows));
+        const uomOptions = @json($uoms->map(fn ($uom) => ['id' => $uom->id, 'code' => $uom->code])->values());
+        let unitRowIndex = 0;
 
         function addCustomRow() {
             const container = document.getElementById('custom-rows');
             const row = document.createElement('div');
             row.className = 'flex items-center gap-2 custom-row';
             row.innerHTML = `
-                    <input type="text" name="custom_keys[]" placeholder="Informasi (misal: Warna)"
-                        class="w-2/5 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
-                    <input type="text" name="custom_values[]" placeholder="Keterangan (misal: Hijau Daun)"
-                        class="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
-                    <button type="button" onclick="this.closest('.custom-row').remove()"
-                        class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-red-50 hover:text-red-500">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>`;
+                <input type="text" name="custom_keys[]" placeholder="Informasi"
+                    class="w-2/5 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
+                <input type="text" name="custom_values[]" placeholder="Keterangan"
+                    class="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
+                <button type="button" onclick="this.closest('.custom-row').remove()"
+                    class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-red-50 hover:text-red-500">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>`;
             container.appendChild(row);
         }
+
+        function renderCategoryAttributes() {
+            const categorySelect = document.getElementById('category_id');
+            const container = document.getElementById('category-attributes');
+            const defs = categoryAttributes[categorySelect.value] || [];
+
+            container.innerHTML = '';
+
+            if (!defs.length) {
+                container.innerHTML = '<p class="rounded-xl border border-dashed border-gray-200 px-4 py-3 text-xs text-gray-500">Kategori ini belum memiliki definisi atribut.</p>';
+                return;
+            }
+
+            defs.forEach(def => {
+                const value = initialAttributes[def.key] ?? '';
+                const wrapper = document.createElement('div');
+                wrapper.className = 'grid gap-2';
+
+                let inputHtml = '';
+                if (def.data_type === 'select') {
+                    const options = (def.options || [])
+                        .map(option => `<option value="${option}" ${value === option ? 'selected' : ''}>${option}</option>`)
+                        .join('');
+                    inputHtml = `<select name="attributes[${def.key}]" class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400"><option value="">- Pilih -</option>${options}</select>`;
+                } else if (def.data_type === 'boolean') {
+                    inputHtml = `<label class="inline-flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" name="attributes[${def.key}]" value="1" ${value ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600">Ya</label>`;
+                } else {
+                    const type = def.data_type === 'number' ? 'number' : 'text';
+                    const step = def.data_type === 'number' ? 'step="0.01"' : '';
+                    inputHtml = `<input type="${type}" ${step} name="attributes[${def.key}]" value="${value ?? ''}" class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">`;
+                }
+
+                wrapper.innerHTML = `
+                    <label class="text-sm font-medium text-gray-700">${def.label}${def.unit ? ` <span class="text-xs text-gray-500">(${def.unit})</span>` : ''}</label>
+                    ${inputHtml}
+                `;
+                container.appendChild(wrapper);
+            });
+        }
+
+        function renderUnitRow(row = {}, index = unitRowIndex++) {
+            const container = document.getElementById('item-unit-rows');
+            const wrapper = document.createElement('div');
+            wrapper.className = 'grid gap-3 rounded-xl border border-gray-200 bg-white p-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto_auto]';
+
+            const selectedUomId = row.uom_id ?? '';
+            const optionsHtml = ['<option value="">- Pilih satuan -</option>']
+                .concat(uomOptions.map(option => `<option value="${option.id}" ${String(selectedUomId) === String(option.id) ? 'selected' : ''}>${option.code}</option>`))
+                .join('');
+
+            wrapper.innerHTML = `
+                <div>
+                    <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">Satuan</label>
+                    <select name="item_units[${index}][uom_id]" class="tom-select-init w-full rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400">
+                        ${optionsHtml}
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">Konversi ke Dasar</label>
+                    <input type="number" name="item_units[${index}][conversion_qty]" value="${row.conversion_qty ?? ''}" min="0.0001" step="0.0001"
+                        class="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400">
+                </div>
+                <label class="flex items-center gap-2 self-end rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                    <input type="checkbox" name="item_units[${index}][allow_sale]" value="1" ${(row.allow_sale ?? false) ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600">
+                    Jual
+                </label>
+                <label class="flex items-center gap-2 self-end rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                    <input type="checkbox" name="item_units[${index}][allow_purchase]" value="1" ${(row.allow_purchase ?? false) ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600">
+                    Beli
+                </label>
+                <button type="button" onclick="this.closest('.rounded-xl').remove()"
+                    class="self-end rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50">
+                    Hapus
+                </button>
+            `;
+
+            container.appendChild(wrapper);
+        }
+
+        function addUnitRow() {
+            renderUnitRow();
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const categorySelect = document.getElementById('category_id');
+            if (categorySelect) {
+                renderCategoryAttributes();
+                categorySelect.addEventListener('change', renderCategoryAttributes);
+            }
+
+            if (unitRowsSeed.length) {
+                unitRowsSeed.forEach(row => renderUnitRow(row));
+            }
+        });
     </script>
 
 @endsection

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Module01;
 
 use App\Models\Role;
+use App\Models\Branch;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,6 +24,7 @@ class T0105DeactivateUserTest extends TestCase
 
     private User $superAdmin;
     private User $kasir;
+    private int $branchId;
 
     protected function setUp(): void
     {
@@ -30,6 +32,7 @@ class T0105DeactivateUserTest extends TestCase
         $this->seed(DatabaseSeeder::class);
 
         $this->superAdmin = User::where('username', 'superadmin')->firstOrFail();
+        $this->branchId = Branch::query()->value('id');
 
         $kasirRoleId = Role::where('name', 'kasir')->value('id');
         $this->kasir = User::create([
@@ -38,7 +41,7 @@ class T0105DeactivateUserTest extends TestCase
             'email'     => null, // email kini nullable
             'password'  => bcrypt('Password1'),
             'role_id'   => $kasirRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
     }
@@ -95,7 +98,7 @@ class T0105DeactivateUserTest extends TestCase
             'email'     => null,
             'password'  => bcrypt('Password1'),
             'role_id'   => $adminRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
 
@@ -119,7 +122,7 @@ class T0105DeactivateUserTest extends TestCase
             'email'     => null,
             'password'  => bcrypt('Password1'),
             'role_id'   => $adminRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
 
@@ -141,7 +144,7 @@ class T0105DeactivateUserTest extends TestCase
                 'password'              => 'Password1',
                 'password_confirmation' => 'Password1',
                 'role_id'               => $kasirRoleId,
-                'branch_id'             => 1,
+                'branch_id'             => $this->branchId,
                 'is_active'             => 1,
             ])
             ->assertRedirect(route('admin.users.index'));

@@ -1,1421 +1,367 @@
-================================================================================
-   RETAIL CONTROL — ARSITEKTUR MASTER PRODUK & ATRIBUT DINAMIS
-================================================================================
-
-Dokumen ini menjelaskan implementasi aktual, rancangan skema, strategi import,
-arsitektur komponen, flow end-to-end, policy/authorization, dan catatan
-arsitektur yang terkait dengan Module 02 (Master Produk & Atribut Dinamis / SKU)
-pada project RetailControl.
-
-Terakhir diperbarui : 2026-03-08
-Status              : MODULE 02 SELESAI
-Test Suite          : 62 tests passing untuk Module 01–02
-
-Dasar penyusunan:
-- Dokumen scope & arsitektur sistem toko material multi cabang.
-- Excel existing master produk: 'MASTER BOOK TOKO 250126 (1).xlsx' (11 sheet).
-- Fokus: Master Produk (SKU) + atribut dinamis + strategi import & normalisasi dari Excel.
-
-
-================================================================================
- 1. GAMBARAN UMUM (OVERVIEW)
-================================================================================
-
-Module 02 membangun Master Produk (SKU) untuk sistem POS RetailControl.
-Komponen yang diimplementasikan:
-
-  - Tabel DB        : brands, categories, uoms, items, item_barcodes,
-                      price_lists, price_list_items, attribute_definitions,
-                      category_attribute_sets
-  - RBAC            : 20 permission baru (items/brands/categories/uoms)
-  - Controller      : BrandController, CategoryController, UomController,
-                      ItemController (CRUD + deactivate + import)
-  - Policy          : BrandPolicy, CategoryPolicy, UomPolicy, ItemPolicy
-  - Service         : ExcelImportService (11 sheet handler)
-  - Artisan Command : ImportProductsCommand (php artisan products:import {path?})
-  - Audit Trail     : Auditable trait aktif di semua model master data
-  - Seeder          : UomSeeder, CategorySeeder, BrandSeeder,
-                      AttributeDefinitionSeeder
-
-Prinsip desain:
-  - Single Source of Truth: master produk terpusat, semua cabang mengacu ke
-    katalog yang sama.
-  - Auditability: perubahan master produk tercatat otomatis (Auditable trait).
-  - Modular & non over-engineered: cukup untuk operasi toko material.
-  - SKU-first: unit transaksi adalah SKU/Item.
-  - Atribut dinamis terkontrol: attributes_json per kategori, terdefinisi di
-    attribute_definitions dan dihubungkan via category_attribute_sets.
-
-
-==========================================================================================
-A. ANALISIS DATA EXISTING (EXCEL)
-==========================================================================================
-RINGKASAN SHEET
-- 'RUCIKA ': header_row=8, data_rows~116, headers=['PRODUK', 'JENIS', 'SPESIFIKASI', 'mm', 'inch', 'OD (mm)', 'HARGA', 'DISC 1', 'DISC 2', 'DISC 3', 'HARGA']
-- 'RUCIKA FITTING': header_row=11, data_rows~366, headers=['PRODUK', 'JENIS', 'MM', 'inch', 'ISI/BOX', 'HARGA / PCS', 'DISC 1', 'DISC 2', 'DISC 3']
-- 'HCL': header_row=10, data_rows~363, headers=['No', 'Type', 'Jenis', 'Outlet', 'Power', 'Harga Lama', 'Harga Baru', 'Disc', 'TEMPO', 'Disc', 'TUNAI']
-- 'MASPION': header_row=8, data_rows~103, headers=['PRODUK', 'TYPE', 'UKURAN', 'BRUTO', 'NETTO']
-- 'FITTING MASPION': header_row=6, data_rows~232, headers=['PRODUK', 'Jenis', 'Class', 'Ukuran', 'Pack', 'Bruto', 'Harga']
-- 'PIPA TRILLIUN': header_row=6, data_rows~78, headers=['PRODUK', 'TYPE', 'UKURAN', 'BRUTO', 'NETTO', 'DISC 1', 'DISC 2', 'HARGA']
-- 'EXTRANA': header_row=6, data_rows~141, headers=['PRODUK', 'JENIS', 'Ukuran', 'SATUAN', 'NYM', 'NYY', 'NYMHY', 'NYYHY', 'NFYGbY', 'NYA', 'NYAF', 'NA2XSY IEC / SNI', 'N2XSY IEC / SNI', 'N2XSEBY IEC / SNI', 'NA2XSEBY IEC / SNI', 'MVTIC / NFA2XSY-T SPLN', 'NA2XSEYBY SPLN', 'NFA2X', 'AAAC', 'AAACS', 'NFA2X-T']
-- 'MILLIARD': header_row=9, data_rows~115, headers=['PRODUK', 'JENIS', 'DIAMETER (INCH)', 'M/ROLL (m)', 'Harga/roll', 'DISC 1', 'DISC 2', 'DISC 3', 'HARGA']
-- 'MU': header_row=8, data_rows~8, headers=['MERK', 'PRODUK', 'JENIS', 'HARGA', 'DISC', 'NETTO']
-- 'NO DROP': header_row=8, data_rows~15, headers=['BRANDS', 'ITEM', 'KEMASAN', 'PRICELIST', 'NETTO']
-- 'POWER PRALON': header_row=8, data_rows~90, headers=['Produk', 'TIPE', 'MODEL', 'Inch', 'mm', 'HARGA', 'DISC 1', 'NETT 7,5%', 'DISC 2', 'NETT 18%']
-
-TEMUAN POLA UMUM
-1) Struktur sheet tidak seragam (kolom berbeda per brand/kelompok barang).
-2) Ada baris metadata sebelum header tabel (JENIS BARANG/MERK, distributor/sales, tanggal, dll).
-3) Harga & diskon tidak konsisten formatnya:
-   - Numeric murni (contoh RUCIKA/HCL/MASPION).
-   - String berformat rupiah (contoh RUCIKA FITTING: 'Rp. 14.100,-').
-   - Diskon bertingkat (DISC 1-3) berupa desimal (0.15 = 15%).
-   - Diskon nominal (contoh MU: DISC=2000).
-   - Ada hasil harga final/netto sudah dihitung (kolom HARGA/NETTO).
-4) Ada konsep kemasan/pack yang penting untuk receiving/purchasing:
-   - ISI/BOX (RUCIKA FITTING), Pack (FITTING MASPION), M/ROLL (MILLIARD), KEMASAN (NO DROP).
-5) Ada sheet berbentuk 'matrix' (EXTRANA): tipe kabel menjadi kolom (NYM, NYY, dst). Ini harus diubah (pivot) menjadi SKU per tipe.
-6) Banyak sheet mencantumkan catatan 'harga sudah PPN' atau 'PPN 11%'. Artinya price list kemungkinan sudah termasuk pajak (perlu flag).
-
-DETAIL PER SHEET (YANG PERLU DIPERHATIKAN SAAT IMPORT)
-1) RUCIKA (sheet 'RUCIKA ')
-   - Header di baris 8: PRODUK, JENIS, SPESIFIKASI, mm, inch, OD(mm), HARGA, DISC1-3, HARGA(final).
-   - DISC 1-3 berbentuk desimal (0.15=15%, 0.07=7%, 0.04=4%).
-   - Ada kolom HARGA final (sudah dihitung).
-2) RUCIKA FITTING
-   - Header di baris 11: PRODUK, JENIS, MM, inch, ISI/BOX, HARGA/PCS, DISC1-3.
-   - HARGA/PCS kadang string 'Rp....' -> harus dibersihkan ke numeric.
-   - ISI/BOX penting untuk konversi purchase unit (box) ke base unit (pcs).
-3) HCL
-   - Header di baris 10: No, Type, Jenis, Outlet, Power, Harga Lama, Harga Baru, Disc->TEMPO, Disc->TUNAI.
-   - Ini mengindikasikan 2 'price tier': tempo vs tunai (bukan atribut produk).
-4) MASPION
-   - Header di baris 8: PRODUK, TYPE, UKURAN, BRUTO, NETTO.
-   - Sudah ada netto, sehingga untuk pricing awal cukup ambil NETTO.
-5) FITTING MASPION
-   - Header di baris 6: PRODUK, Jenis, Class, Ukuran, Pack, Bruto, Harga.
-   - Pack = qty/box (atau qty/pack), Harga tampak sebagai harga setelah diskon (net).
-6) PIPA TRILLIUN
-   - Header di baris 6: PRODUK, TYPE, UKURAN, BRUTO, NETTO, DISC1, DISC2, HARGA(final).
-   - Ada netto dan final; final kemungkinan adalah setelah disc1+disc2 dari netto.
-7) EXTRANA
-   - Header di baris 6: PRODUK, JENIS, Ukuran, SATUAN, lalu kolom tipe kabel (NYM, NYY, NYMHY, ...).
-   - KET: Harga rupiah/meter. Artinya harga per meter (base_uom=meter).
-   - Wajib pivot: setiap kolom tipe kabel yang berisi harga -> menjadi baris SKU dengan attribute cable_type.
-8) MILLIARD
-   - Header di baris 9: PRODUK, JENIS, DIAMETER(INCH), M/ROLL(m), Harga/roll, DISC1-3, HARGA(final).
-   - Ada trailing space pada PRODUK (contoh 'SEAGULL '), harus trim.
-9) MU
-   - Header di baris 8: MERK, PRODUK, JENIS, HARGA, DISC, NETTO.
-   - DISC adalah nominal (contoh 2000), bukan persen.
-10) NO DROP
-   - Header di baris 8: BRANDS, ITEM, KEMASAN, PRICELIST, NETTO.
-   - KEMASAN seperti '1 Kg', '4 Kg', '20 Kg' -> perlu distandarkan (pack_size + unit).
-11) POWER PRALON
-   - Header di baris 8: Produk, TIPE, MODEL, Inch, mm, HARGA, DISC1->NETT 7,5%, DISC2->NETT 18%.
-   - Ada 2 level nett (7.5% dan 18%). Ini bisa diperlakukan sebagai price tier atau promo/level customer.
-
-RISIKO KUALITAS DATA DARI EXCEL (DAN SOLUSI)
-- Harga format string: lakukan parse 'Rp', '.', ',', ',-' menjadi integer.
-- Inch/MM campur format (1, 1/2, '1 1/4', 5/8"): distandarkan ke string canonical (lihat aturan naming).
-- Nilai kosong: beberapa kolom bisa kosong (harga tertentu tidak tersedia). Pada import, baris/variant tanpa harga bisa ditandai 'inactive' atau 'price missing'.
-- Diskon bertingkat: jika sudah ada HARGA final/netto, gunakan final sebagai price aktif dan simpan disc breakdown untuk audit.
-
-
-==========================================================================================
-B. RANCANGAN MASTER DATA PRODUK (SKU)
-==========================================================================================
-B1. KONSEP UTAMA
-1) SKU / ITEM
-   - 1 SKU = 1 barang yang dijual (dipilih di POS, dicatat stok, masuk DO, masuk PO, dll).
-   - Contoh: 'PIPA PVC RUCIKA AW 25mm 4M' adalah 1 SKU.
-   - Contoh: 'KABEL EXTRANA 2x1,5 NYM' dan 'KABEL EXTRANA 2x1,5 NYY' adalah 2 SKU berbeda.
-2) PRODUCT FAMILY (OPSIONAL)
-   - Untuk grouping display saja (mis. keluarga kabel EXTRANA ukuran 2x1,5).
-   - Tidak wajib untuk MVP, karena semua operasi bisa cukup dengan SKU.
-
-B2. STRUKTUR FIELD: INTI vs DINAMIS
-1) Field inti (wajib, stabil untuk semua jenis barang)
-   - sku_code (unik)
-   - name (nama tampil di POS)
-   - brand_id
-   - category_id
-   - base_uom_id (satuan jual / satuan stok)
-   - pack_qty (konversi dari kemasan purchase ke base_uom; default 1)
-   - is_active
-   - barcode (opsional; bisa banyak via tabel terpisah jika dibutuhkan)
-2) Atribut dinamis (berbeda antar kategori)
-   - disimpan di kolom JSON: attributes_json
-   - contoh key: diameter_mm, diameter_inch, od_mm, spec, class, model, outlet, power_watt, cable_type, size_mm2, length_per_roll_m, pack_size_kg, dll.
-
-B3. 3 KOLOM CADANGAN
-1) attributes_json  : atribut teknis dinamis per kategori (dipakai sekarang).
-2) custom_fields_json: tempat data tambahan di masa depan (barcode tambahan, lokasi rak, min_stock, foto_url, supplier_sku, dll).
-3) raw_source_json  : simpan jejak baris sumber import (sheet_name, row_number, nilai kolom original) untuk audit & re-import.
-
-B4. DATABASE SCHEMA (TABEL LENGKAP)
-Catatan: desain ini sengaja minimal agar tidak over-engineered, namun tetap rapi dan siap berkembang.
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ B4.1 TABEL: brands                                                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Kolom          Tipe              Keterangan                                │
-│  ─────────────  ────────────────  ─────────────────────────────────────     │
-│  id             BIGINT (PK)      Auto-increment primary key                 │
-│  name           VARCHAR(100)     Nama brand (UNIQUE)                        │
-│  is_active      BOOLEAN          Status aktif/nonaktif (default: true)      │
-│  created_at     TIMESTAMP                                                   │
-│  updated_at     TIMESTAMP                                                   │
-│                                                                             │
-│  UNIQUE: name                                                               │
-│  Trait: Auditable                                                           │
-│  Relasi: hasMany → Item                                                     │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ B4.2 TABEL: categories                                                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Kolom          Tipe              Keterangan                                │
-│  ─────────────  ────────────────  ─────────────────────────────────────     │
-│  id             BIGINT (PK)      Auto-increment primary key                 │
-│  parent_id      BIGINT (FK,NULL) → categories.id (self-referencing)        │
-│  name           VARCHAR(100)     Nama kategori                              │
-│  code           VARCHAR(20,NULL) Kode unik (PIPA_PVC, FITTING_PVC, dll)    │
-│  is_active      BOOLEAN          Status aktif/nonaktif (default: true)      │
-│  created_at     TIMESTAMP                                                   │
-│  updated_at     TIMESTAMP                                                   │
-│                                                                             │
-│  UNIQUE: code (nullable, NULL tidak dihitung duplikat)                      │
-│  Trait: Auditable                                                           │
-│  Relasi: belongsTo parent(), hasMany children(), hasMany items(),           │
-│          belongsToMany AttributeDefinition (via category_attribute_sets)    │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ B4.3 TABEL: uoms                                                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Kolom          Tipe              Keterangan                                │
-│  ─────────────  ────────────────  ─────────────────────────────────────     │
-│  id             BIGINT (PK)      Auto-increment primary key                 │
-│  code           VARCHAR(20)      Kode satuan (PCS, BATANG, BOX, dst)        │
-│  name           VARCHAR(50)      Nama panjang (Pieces, Batang, dll)         │
-│  is_active      BOOLEAN          Status aktif/nonaktif (default: true)      │
-│  created_at     TIMESTAMP                                                   │
-│  updated_at     TIMESTAMP                                                   │
-│                                                                             │
-│  UNIQUE: code                                                               │
-│  Trait: Auditable                                                           │
-│  Cast: is_active → boolean                                                  │
-│  Relasi: hasMany itemsAsBase(), hasMany itemsAsPurchase()                   │
-│  UoM code diupcase otomatis di controller sebelum disimpan                  │
-│  Migration tambahan: 2026_02_27_300001_add_is_active_to_uoms_table.php      │
-│                                                                             │
-│  9 UoM di UomSeeder:                                                        │
-│    PCS, BATANG, BOX, ROLL, METER, KG, PACK, LEMBAR, SET                    │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ B4.4 TABEL: items (SKU master)                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Kolom              Tipe              Keterangan                            │
-│  ─────────────────  ────────────────  ─────────────────────────────────     │
-│  id                 BIGINT (PK)      Auto-increment primary key             │
-│  sku_code           VARCHAR(100)     Kode SKU (UNIQUE)                      │
-│  name               VARCHAR(255)     Nama tampil di POS/admin               │
-│  brand_id           BIGINT (FK,NULL) → brands.id (nullOnDelete)            │
-│  category_id        BIGINT (FK,NULL) → categories.id (nullOnDelete)        │
-│  base_uom_id        BIGINT (FK)      → uoms.id (satuan jual/stok; WAJIB)   │
-│  purchase_uom_id    BIGINT (FK,NULL) → uoms.id (satuan beli, opsional)     │
-│  pack_qty           DECIMAL(12,4)    Qty base_uom per purchase_uom          │
-│                                      (default 1)                            │
-│  tax_included       BOOLEAN          Harga sudah termasuk PPN (default true)│
-│  is_active          BOOLEAN          Status aktif/nonaktif (default true)   │
-│  attributes_json    JSON (NULL)      Atribut teknis dinamis per kategori    │
-│  custom_fields_json JSON (NULL)      Data tambahan masa depan               │
-│  raw_source_json    JSON (NULL)      Jejak sumber import Excel              │
-│  created_at         TIMESTAMP                                               │
-│  updated_at         TIMESTAMP                                               │
-│                                                                             │
-│  INDEX: (brand_id, category_id, is_active)                                  │
-│  FOREIGN KEY: brand_id nullOnDelete, category_id nullOnDelete,              │
-│               base_uom_id RESTRICT, purchase_uom_id nullOnDelete            │
-│  Trait: Auditable                                                           │
-│  Cast JSON: array; cast pack_qty: decimal:4                                 │
-│  Relasi: belongsTo brand, category, baseUom, purchaseUom                   │
-│          hasMany barcodes, priceListItems                                   │
-│                                                                             │
-│  ATURAN: Tidak ada DELETE route. Hanya deactivate (is_active=false).        │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ B4.5 TABEL: item_barcodes                                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Kolom          Tipe              Keterangan                                │
-│  ─────────────  ────────────────  ─────────────────────────────────────     │
-│  id             BIGINT (PK)                                                 │
-│  item_id        BIGINT (FK)       → items.id (cascadeOnDelete)             │
-│  barcode        VARCHAR(100)      Kode barcode (UNIQUE)                     │
-│  is_primary     BOOLEAN           Apakah barcode utama                      │
-│  created_at     TIMESTAMP                                                   │
-│  updated_at     TIMESTAMP                                                   │
-│                                                                             │
-│  Catatan: Barcode UI belum ada (MVP). Data hanya terisi via import.         │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ B4.6 TABEL: price_lists                                                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Kolom          Tipe              Keterangan                                │
-│  ─────────────  ────────────────  ─────────────────────────────────────     │
-│  id             BIGINT (PK)                                                 │
-│  name           VARCHAR(100)      Nama price list (UNIQUE)                  │
-│  scope          ENUM              GLOBAL | BRANCH (default: GLOBAL)         │
-│  branch_id      BIGINT (NULL)     Jika BRANCH: FK ke branches (belum ada)  │
-│  effective_from DATE              Tanggal mulai berlaku                     │
-│  effective_to   DATE (NULL)       Tanggal berakhir (null = tanpa batas)     │
-│  is_active      BOOLEAN           (default true)                            │
-│  created_at     TIMESTAMP                                                   │
-│  updated_at     TIMESTAMP                                                   │
-│                                                                             │
-│  Price list yang dibuat saat import:                                        │
-│  RUCIKA_DEFAULT, MASPION_DEFAULT, TRILLIUN_DEFAULT, HCL_TEMPO, HCL_TUNAI,  │
-│  EXTRANA_DEFAULT, MILLIARD_DEFAULT, MU_DEFAULT, NODROP_DEFAULT,             │
-│  POWER_PRALON_NETT_7_5, POWER_PRALON_NETT_18                                │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ B4.7 TABEL: price_list_items                                                │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Kolom          Tipe              Keterangan                                │
-│  ─────────────  ────────────────  ─────────────────────────────────────     │
-│  id             BIGINT (PK)                                                 │
-│  price_list_id  BIGINT (FK)       → price_lists.id (cascadeOnDelete)       │
-│  item_id        BIGINT (FK)       → items.id (cascadeOnDelete)             │
-│  sell_price     DECIMAL(15,2)     Harga jual (dalam satuan base_uom item)   │
-│  price_uom_id   BIGINT (FK,NULL)  → uoms.id (nullOnDelete)                 │
-│  notes_json     JSON (NULL)       Breakdown diskon dari Excel (audit trail) │
-│  created_at     TIMESTAMP                                                   │
-│  updated_at     TIMESTAMP                                                   │
-│                                                                             │
-│  UNIQUE: (price_list_id, item_id)                                           │
-│  Relasi: belongsTo priceList, item, priceUom                                │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ B4.8 TABEL: attribute_definitions                                           │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Kolom          Tipe              Keterangan                                │
-│  ─────────────  ────────────────  ─────────────────────────────────────     │
-│  id             BIGINT (PK)                                                 │
-│  key            VARCHAR(50)       Machine key (UNIQUE); digunakan sebagai   │
-│                                   key di attributes_json item               │
-│  label          VARCHAR(100)      Label tampil di UI                        │
-│  data_type      ENUM              number | text | select | boolean          │
-│  unit           VARCHAR(20,NULL)  Satuan (mm, m, W, kg, pcs, dll)           │
-│  options_json   JSON (NULL)       List nilai untuk data_type=select         │
-│  is_required    BOOLEAN           Wajib diisi? (default false)              │
-│  created_at     TIMESTAMP                                                   │
-│  updated_at     TIMESTAMP                                                   │
-│                                                                             │
-│  19 attribute definitions di AttributeDefinitionSeeder:                     │
-│  diameter_mm, diameter_inch, od_mm, panjang_m, spec, model,                │
-│  jenis, class, isi_per_box, outlet, power_watt, type_text,                 │
-│  cable_size, cable_size_unit, cable_type (select, 17 options),              │
-│  length_per_roll_m, pack_size, pack_size_unit, weight_kg                   │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ B4.9 TABEL: category_attribute_sets (Pivot)                                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Kolom                    Tipe          Keterangan                          │
-│  ───────────────────────  ───────────   ─────────────────────────────────   │
-│  category_id              BIGINT (FK)   → categories.id (cascadeOnDelete)  │
-│  attribute_definition_id  BIGINT (FK)   → attribute_definitions.id         │
-│                                           (cascadeOnDelete)                │
-│                                                                             │
-│  PRIMARY KEY: (category_id, attribute_definition_id) — komposit            │
-│  Tanpa timestamps                                                           │
-│  Tujuan: mendefinisikan atribut yang relevan per kategori, agar UI bisa     │
-│          generate form otomatis (belum diimplementasikan di MVP)            │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-DIAGRAM RELASI (ER):
-
-  ┌───────────┐        ┌─────────────────────────────┐
-  │  brands   │─ 1:N ──│  items (SKU)                │
-  └───────────┘        │  sku_code, name              │──1:N─► item_barcodes
-  ┌────────────┐─ 1:N ─│  brand_id, category_id       │
-  │ categories │        │  base_uom_id                 │──1:N─► price_list_items
-  └────────────┘        │  purchase_uom_id             │         └─► price_lists
-  ┌──────────┐─ 1:N ───│  pack_qty, tax_included       │
-  │   uoms   │          │  is_active                   │
-  └──────────┘          │  attributes_json              │
-        ↑               │  custom_fields_json           │
-   base/purchase        │  raw_source_json             │
-    uom                 └─────────────────────────────┘
-  ┌───────────────────┐
-  │ categories        │─N:M─► attribute_definitions
-  │ attribute_sets    │       (via category_attribute_sets pivot)
-  └───────────────────┘
-
-
-B5. PRICING (DIPISAHKAN DARI MASTER PRODUK, TAPI DIIMPORT UNTUK HARGA AWAL)
-Rationale: Excel adalah price list; namun arsitektur sistem memisahkan Master Data vs Pricing Management.
-
-Untuk kasus HCL (TEMPO vs TUNAI) & POWER PRALON (NETT 7.5% vs 18%):
-- buat 2 price list berbeda:
-  * 'HCL_TUNAI' dan 'HCL_TEMPO'
-  * 'POWER_PRALON_NETT_7_5' dan 'POWER_PRALON_NETT_18'
-- Aturan pemakaian price list bisa ditentukan pada modul POS / Customer group nanti.
-
-B6. ATTRIBUTE SCHEMA (AGAR DINAMIS TAPI TERKONTROL)
-Tujuan: attributes_json tidak liar; UI bisa generate form otomatis berdasarkan kategori.
-
-Tabel SUDAH DIBUAT (bukan opsional lagi):
-- attribute_definitions: key, label, data_type(number/text/select/boolean), unit, options_json, is_required
-- category_attribute_sets: category_id, attribute_definition_id (pivot)
-
-Attribute definitions YANG TELAH DIIMPLEMENTASIKAN (19 keys di AttributeDefinitionSeeder):
-- diameter_mm      (number, unit=mm)       ← Pipa PVC
-- diameter_inch    (text,   unit=inch)      ← Pipa PVC
-- od_mm            (number, unit=mm)        ← Pipa PVC
-- panjang_m        (number, unit=m)         ← pipa 4m/batang
-- spec             (text)                   ← AW/D/dll
-- model            (text)                   ← POLOS/MOF/dll
-- jenis            (text)                   ← Fitting PVC / Milliard
-- class            (text)                   ← TS/dll
-- isi_per_box      (number, unit=pcs)       ← Fitting PVC (ISI/BOX)
-- outlet           (text)                   ← Pompa HCL (0.75")
-- power_watt       (number, unit=W)         ← Pompa HCL
-- type_text        (text)                   ← Pompa HCL (Type)
-- cable_size       (text)                   ← EXTRANA (2x1,5)
-- cable_size_unit  (text)                   ← EXTRANA (mm2)
-- cable_type       (select, 17 options)     ← EXTRANA (NYM/NYY/NYMHY/NYYHY/NFYGbY/
-                                               NYA/NYAF/NA2XSY/N2XSY/N2XSEBY/
-                                               NA2XSEBY/MVTIC/NA2XSEYBY/NFA2X/
-                                               AAAC/AAACS/NFA2X-T)
-- length_per_roll_m (number, unit=m)        ← MILLIARD (M/ROLL)
-- pack_size        (number)                 ← NO DROP (kemasan: 4)
-- pack_size_unit   (text)                   ← NO DROP (kemasan: Kg)
-- weight_kg        (number, unit=kg)        ← MU Mortar
-
-Catatan: pack_qty_box dari rancangan awal TIDAK diimplementasikan terpisah.
-  Konversi box→pcs ditangani oleh kolom items.pack_qty (decimal) yang sudah ada.
-
-B7. STANDAR KATEGORI (YANG TELAH DIIMPLEMENTASIKAN)
-Kategori di CategorySeeder (7 kategori root, semua is_active=true):
-
-  Code          Name                         Brand Mapping (Excel)
-  ───────────   ──────────────────────────   ─────────────────────────────────
-  PIPA_PVC      Pipa PVC                     RUCIKA, MASPION, TRILLIUN, POWER PRALON
-  FITTING_PVC   Fitting PVC                  RUCIKA FITTING, FITTING MASPION
-  POMPA         Pompa Air                    HCL
-  KABEL         Kabel Listrik                EXTRANA
-  CHEM          Waterproofing / Chemical     NO DROP
-  MORTAR        Mortar / Material Bangunan   MU
-  LAINNYA       Lainnya                      MILLIARD (selang/pipa gulungan)
-
-Catatan: Kategori mendukung parent_id (sub-kategori) tapi seeder hanya buat root.
-Sub-kategori dapat ditambahkan via UI atau seeder berikutnya.
-
-
-==========================================================================================
-C. STRATEGI IMPORT & NORMALISASI DARI EXCEL
-==========================================================================================
-C1. TARGET HASIL IMPORT
-Output import harus menghasilkan:
-- Daftar SKU (items) lengkap, unik, siap dipakai POS/search/barcode (jika ada).
-- Pricing awal tersimpan di price list (price_list_items).
-- raw_source_json menyimpan jejak sumber per SKU.
-
-C2. ATURAN UMUM NORMALISASI
-1) Trim & bersihkan string
-   - strip spasi depan/belakang (contoh 'SEAGULL ' -> 'SEAGULL').
-   - normalisasi huruf besar/kecil (gunakan Title Case atau Upper Case konsisten).
-2) Parse harga rupiah
-   - buang 'Rp', '.', ',', ',-', spasi -> angka integer.
-3) Diskon
-   - jika kolom DISC berupa 0.xx -> treat sebagai persen.
-   - jika DISC > 1 dan tipe nominal (contoh MU) -> treat sebagai potongan rupiah.
-4) Standarisasi inch
-   - simpan sebagai string canonical, contoh: '1/2', '3/4', '1', '1 1/4', '5/8"'.
-   - untuk SKU code, gunakan format tanpa spasi.
-5) Konversi kemasan
-   - ISI/BOX, Pack -> simpan pack_qty (qty base_uom per box).
-   - M/ROLL -> simpan length_per_roll_m (atribut).
-   - KEMASAN '4 Kg' -> pack_size=4, pack_size_unit='Kg'.
-6) Harga sudah PPN
-   - default tax_included=true untuk semua item hasil import.
-
-C3. ATURAN PEMBUATAN SKU (SKU CODE & NAMA TAMPIL)
-Format sku_code: <BRAND_CODE>-<CAT_CODE>-<KEY_SPEC>
-
-Contoh brand_code: RUCIKA, TRILLIUN, MASPION, HCL, EXTRANA, MILLIARD, MU, NODROP, POWER
-Contoh cat_code:   PIPA, FITTING, POMPA, KABEL, CHEM, MORTAR
-
-Contoh KEY_SPEC per kategori:
-- PIPA: <TYPE>-<MM>MM-<INCH>
-- FITTING: <JENIS>-<MM>MM
-- POMPA: <TYPE_TEXT>-<OUTLET>
-- KABEL: <SIZE>-<CABLETYPE>
-- CHEM: <ITEM>-<PACKSIZE><UNIT>
-- MORTAR: <JENIS_TEXT>
-
-Nama tampil (items.name) disarankan human-readable:
-- PIPA PVC RUCIKA AW 25mm (1") 4m
-- FITTING RUCIKA CLEAN OUT (AW) 50mm (2")
-- KABEL EXTRANA NYM 2x1,5 (mm2) - harga/meter
-- NO DROP WATERPROOFING READY MIX 4 Kg
-
-Deduplication: jika sku_code bentrok (nama berbeda), tambahkan suffix -V2, -V3, dst.
-Loop max 5 attempt di ExcelImportService::upsertItem().
-
-C4. MAPPING IMPORT PER SHEET
-1) RUCIKA (base_uom=BATANG)
-   attributes_json: diameter_mm=mm, diameter_inch=inch, od_mm=OD(mm), spec=SPESIFIKASI, panjang_m=4
-   pricing: HARGA(final)/findLastCol; price list = RUCIKA_DEFAULT.
-
-2) RUCIKA FITTING (base_uom=PCS)
-   pack_qty=ISI/BOX.
-   attributes_json: size_mm=MM, size_inch=inch, jenis=JENIS, isi_per_box=ISI/BOX.
-   pricing: parse HARGA/PCS (string rupiah); price list = RUCIKA_DEFAULT.
-
-3) HCL (base_uom=PCS)
-   attributes_json: outlet=Outlet, power_watt=Power (parse W), type_text=Type, jenis=Jenis.
-   pricing: buat 2 price list: HCL_TEMPO dan HCL_TUNAI.
-
-4) MASPION (base_uom=BATANG)
-   attributes_json: type=TYPE, ukuran_inch=UKURAN, panjang_m=4.
-   pricing: NETTO; price list = MASPION_DEFAULT.
-
-5) FITTING MASPION (base_uom=PCS)
-   pack_qty=Pack.
-   attributes_json: jenis=Jenis, class=Class, ukuran_inch=Ukuran, isi_per_box=Pack.
-   pricing: kolom Harga; price list = MASPION_DEFAULT.
-
-6) PIPA TRILLIUN (base_uom=BATANG)
-   attributes_json: type=TYPE, ukuran_inch=UKURAN.
-   pricing: HARGA(final); price list = TRILLIUN_DEFAULT.
-
-7) EXTRANA (base_uom=METER) — PIVOT MATRIX
-   Untuk setiap baris ukuran, buat SKU per cable_type yang punya harga > 0.
-   attributes_json: cable_size=Ukuran, cable_size_unit=SATUAN, cable_type=<nama kolom>.
-   pricing: sell_price = nilai sel per meter; price list = EXTRANA_DEFAULT.
-
-8) MILLIARD (base_uom=ROLL)
-   attributes_json: diameter_inch=DIAMETER(INCH), length_per_roll_m=M/ROLL,
-                    jenis=JENIS, produk=PRODUK.
-   pricing: HARGA(final); price list = MILLIARD_DEFAULT.
-
-9) MU (base_uom=PACK)
-   CATATAN: base_uom menggunakan PACK (bukan PCS).
-   attributes_json: merk=MERK, produk=PRODUK, jenis=JENIS.
-   pricing: NETTO; price list = MU_DEFAULT.
-   DISC nominal (contoh 2000) dari Excel hanya di raw_source_json.
-
-10) NO DROP (base_uom=PCS)
-    attributes_json: item_name=ITEM, pack_size & pack_size_unit parse dari KEMASAN.
-    pricing: NETTO; price list = NODROP_DEFAULT.
-
-11) POWER PRALON (base_uom=BATANG)
-    attributes_json: tipe=TIPE, model=MODEL, diameter_inch=Inch, diameter_mm=mm.
-    pricing: buat 2 price list: POWER_PRALON_NETT_7_5 dan POWER_PRALON_NETT_18.
-
-C5. VALIDASI SAAT IMPORT (HARUS ADA)
-- sku_code dan name tidak boleh kosong → failed jika kosong.
-- base_uom wajib valid (findUom() throw firstOrFail jika tidak ada di DB).
-- price kosong/null → item dibuat tanpa PriceListItem (tidak ada harga awal).
-- pack_qty kosong → default 1.
-- Untuk EXTRANA: hanya buat SKU jika price cell numeric dan > 0.
-
-
-==========================================================================================
-D. UI (MVP) UNTUK MANAGEMENT PRODUCT — STATUS IMPLEMENTASI
-==========================================================================================
-D1. PRODUCT LIST [IMPLEMENTASI: admin/items/index]
-- Kolom: sku_code, name, brand, category, base_uom, status (Aktif/Nonaktif).
-- Filter YANG ADA: brand_id, category_id, active (1/0), keyword (q) → search name & sku_code.
-- Cascading filter: ItemController membangun brandToCategories dan categoryToBrands map
-  dari items existing, sehingga filter brand & kategori saling menyesuaikan di UI.
-- Filter BELUM ADA: "ada harga/tidak" (price filter belum diimplementasikan di MVP).
-- Action: Detail (show), Edit, Nonaktifkan.
-- Fitur "manage barcodes" belum diimplementasikan (barcodes hanya tersimpan di DB via import).
-- Paginasi: 10 item per halaman, query string dipertahankan.
-
-D2. PRODUCT FORM [IMPLEMENTASI: admin/items/create & edit]
-Section 1: Identitas
-- sku_code (wajib unik), name, brand (dropdown), category (dropdown), active.
-
-Section 2: Unit & Kemasan
-- base_uom (wajib, dropdown UoM), purchase_uom (opsional), pack_qty.
-
-Section 3: Atribut Teknis (key-value pair rows)
-- IMPLEMENTASI SAAT INI: baris input pasangan key/value yang dinamis.
-  Form menggunakan input array attr_keys[] dan attr_values[].
-  Controller: parseKeyValue($attr_keys, $attr_values) → attributes_json (array).
-- Form otomatis berbasis category_attribute_sets BELUM diimplementasikan di MVP.
-- attributes_json diisi manual via form key-value atau via import Excel.
-
-Section 4: Pajak & Cadangan
-- tax_included (checkbox, default true).
-- custom_fields_json (key-value pair rows, sama seperti Section 3).
-
-Validasi di ItemController::validated():
-- sku_code: required, max:100, unique (ignore self saat update)
-- name: required, max:255
-- brand_id: nullable, exists:brands
-- category_id: nullable, exists:categories
-- base_uom_id: required, exists:uoms
-- purchase_uom_id: nullable, exists:uoms
-- pack_qty: numeric, min:0.0001
-- tax_included: boolean
-- is_active: boolean
-
-D3. IMPORT EXCEL [IMPLEMENTASI: admin/items/import]
-- Form upload file .xlsx (max 20 MB; validasi: mimes:xlsx,xls, max:20480).
-- TIDAK ada preview/wizard: langsung proses semua sheet → hasilkan SKU + price.
-- Tampilkan hasil: created/skipped/failed + daftar error.
-- Library: shuchkin/simplexlsx (pure PHP, ext-zip TIDAK diperlukan).
-  (PHP 8.4.12 di server ini tidak memiliki ext-zip)
-- Juga tersedia sebagai Artisan command: php artisan products:import {path?}
-  (auto-cari .xlsx di storage/app/imports/ jika path kosong)
-
-D4. PRODUCT DETAIL [IMPLEMENTASI: admin/items/show]
-- Tampilkan detail lengkap item (brand, category, UoM, attributes_json, custom_fields_json).
-- Audit log panel: siapa mengubah apa, kapan, old_values, new_values (paginate 10).
-- Price list yang terkait (via PriceListItem → priceList).
-- Eager load: brand, category, baseUom, purchaseUom, barcodes, priceListItems.priceList.
-
-D5. AUDIT LOG VIEW [IMPLEMENTASI: admin/audit-logs]
-- Shared dengan seluruh sistem (bukan khusus produk).
-- Filter: auditable_type, user_id, action, date_from, date_to.
-- Paginasi 10 record per halaman.
-- Middleware double-check: RequirePermission + abort_unless di controller.
-
-
-==========================================================================================
-E. KETERKAITAN DENGAN MODUL LAIN (AGAR KONSISTEN)
-==========================================================================================
-1) POS
-- POS mencari barang via barcode atau search name/sku_code.
-- Saat transaksi disimpan, sistem menyimpan snapshot harga_jual per item (sesuai kebijakan arsitektur).
-
-2) Inventory
-- Stok dicatat pada level SKU per cabang/gudang.
-- Perubahan master produk tidak mengubah histori stok & transaksi; hanya mempengaruhi transaksi berikutnya.
-
-3) Delivery Order (DO)
-- DO mereferensikan SKU dan qty.
-- Setelah DO dibuat, item & qty tidak boleh diubah tanpa mekanisme void/regenerate (kebijakan penguncian).
-
-4) Purchasing & AP
-- PO/GRN memakai SKU; receiving dapat input dalam unit purchase (BOX/ROLL) lalu konversi ke base_uom via pack_qty.
-- Harga beli dapat menggunakan supplier price list (bisa dimulai dari Excel lalu disesuaikan).
-
-
-==========================================================================================
-F. KEPUTUSAN PRAKTIS (AGAR SESUAI KONDISI: DATA HANYA EXCEL)
-==========================================================================================
-1) Anggap price list di Excel sebagai 'Harga Jual Awal' (bukan HPP). HPP dihitung dari Purchasing di tahap berikutnya.
-2) tax_included=true untuk semua sheet yang mencantumkan 'sudah PPN/PPN 11%'.
-3) Barcode: optional; jika tidak tersedia sekarang, POS wajib bisa search dengan keyword + kategori/brand.
-4) Multi cabang: katalog SKU global. Harga global dulu; override per cabang menyusul jika diperlukan.
-5) Hindari kolom extra1/extra2/extra3 yang tidak jelas; gunakan 3 JSON column yang terstruktur (attributes_json, custom_fields_json, raw_source_json).
-
-
-==========================================================================================
-G. ACCEPTANCE CRITERIA (DEFINITION OF DONE) — STATUS SAAT INI
-==========================================================================================
-Master Produk dinyatakan siap dipakai jika:
-
-  KRITERIA                                                STATUS
-  ──────────────────────────────────────────────────────  ───────────────────────────────
-  Semua SKU dari 11 sheet dapat diimport via service      ✅ ExcelImportService selesai
-    tanpa kehilangan info utama (ukuran, kemasan, tipe)
-  EXTRANA sudah diubah jadi SKU per tipe kabel (pivot)   ✅ Implementasi lengkap
-  HCL dan POWER PRALON: 2 price tier → 2 PriceList       ✅ HCL_TEMPO/HCL_TUNAI,
-                                                              POWER_PRALON_NETT_7_5/18
-  Import Excel tersedia via UI (form upload)              ✅ admin/items/import
-  Import Excel tersedia via Artisan command               ✅ products:import {path?}
-  Perubahan master produk tercatat di audit log           ✅ Auditable trait aktif
-  SKU unik (dedup dengan suffix -V2)                      ✅ ExcelImportService
-  raw_source_json tersimpan per SKU (audit trail import)  ✅ Disimpan otomatis saat import
-  CRUD + deactivate tersedia untuk item/brand/cat/uom     ✅ Controllers + Policies
-  UoM mendukung deactivate (is_active + route + policy)    ✅ UomController::deactivate()
-  UoM menggunakan Auditable trait                          ✅ Perubahan UoM ter-audit
-  RBAC terintegrasi (38 permission)                        ✅ Item/Brand/Cat/Uom policies
-  Branch.php stub model tersedia                           ✅ Mencegah Class Not Found
-  Login rate limiting                                      ✅ throttle:5,1 pada POST /login
-  Test suite passing                                       ✅ 58 tests
-
-  BELUM DIIMPLEMENTASIKAN (deferred ke modul selanjutnya):
-  - POS search items (via Module 05)
-  - Filter "ada harga/tidak" di list item
-  - Form dinamis atribut per kategori (category_attribute_sets UI)
-  - Manage barcodes via UI
-  - Branches table & migration (tabel belum dibuat, model stub Branch.php sudah ada)
-
-
-================================================================================
- H. KOMPONEN ARSITEKTUR (FILE MAP)
-================================================================================
-
-RetailControl/
-├── app/
-│   ├── Models/
-│   │   ├── Brand.php                  # [Mod02] id, name(unique), is_active
-│   │   │                              # Trait: Auditable
-│   │   │                              # Cast: is_active → boolean
-│   │   │                              # Relasi: hasMany Item
-│   │   │
-│   │   ├── Category.php               # [Mod02] id, parent_id(nullable), name,
-│   │   │                              #   code(unique,nullable), is_active
-│   │   │                              # Trait: Auditable
-│   │   │                              # Cast: is_active → boolean
-│   │   │                              # Relasi: parent(), children(), items(),
-│   │   │                              #   belongsToMany AttributeDefinition
-│   │   │                              #   (via category_attribute_sets)
-│   │   │
-│   │   ├── Uom.php                    # [Mod02] id, code(unique), name, is_active
-│   │   │                              # Trait: Auditable
-│   │   │                              # Cast: is_active → boolean
-│   │   │                              # Relasi: itemsAsBase(), itemsAsPurchase()
-│   │   │                              # code diupcase di controller sebelum save
-│   │   │
-│   │   ├── Item.php                   # [Mod02] SKU master
-│   │   │                              # Trait: Auditable
-│   │   │                              # fillable: sku_code, name, brand_id,
-│   │   │                              #   category_id, base_uom_id,
-│   │   │                              #   purchase_uom_id, pack_qty,
-│   │   │                              #   tax_included, is_active,
-│   │   │                              #   attributes_json, custom_fields_json,
-│   │   │                              #   raw_source_json
-│   │   │                              # cast JSON → array; pack_qty → decimal:4
-│   │   │                              # Relasi: brand, category, baseUom,
-│   │   │                              #   purchaseUom, barcodes, priceListItems
-│   │   │
-│   │   ├── ItemBarcode.php            # [Mod02] id, item_id(FK), barcode(unique),
-│   │   │                              #   is_primary
-│   │   │
-│   │   ├── PriceList.php              # [Mod02] id, name(unique), scope(GLOBAL/
-│   │   │                              #   BRANCH), branch_id(null), effective_from,
-│   │   │                              #   effective_to(null), is_active
-│   │   │
-│   │   ├── PriceListItem.php          # [Mod02] id, price_list_id(FK), item_id(FK),
-│   │   │                              #   sell_price(decimal:2), price_uom_id(null),
-│   │   │                              #   notes_json(null)
-│   │   │                              # UNIQUE: (price_list_id, item_id)
-│   │   │                              # Relasi: priceList, item, priceUom
-│   │   │
-│   │   └── AttributeDefinition.php   # [Mod02] key(unique), label, data_type,
-│   │                                  #   unit(null), options_json(null), is_required
-│   │
-│   ├── Http/Controllers/Admin/
-│   │   ├── BrandController.php        # [Mod02] index, create, store, edit,
-│   │   │                              #   update, deactivate
-│   │   │                              # Gate::authorize() di setiap action
-│   │   │                              # Validasi: name required, max:100, unique
-│   │   │
-│   │   ├── CategoryController.php     # [Mod02] index, create, store, edit,
-│   │   │                              #   update, deactivate
-│   │   │                              # create/edit: load parent categories
-│   │   │                              #   (root only, exclude self)
-│   │   │                              # Validasi: parent_id nullable,
-│   │   │                              #   name required, code nullable unique
-│   │   │
-│   │   ├── UomController.php          # [Mod02] index, create, store, edit,
-│   │   │                              #   update, deactivate
-│   │   │                              # code di-uppercase sebelum disimpan
-│   │   │                              # Validasi: code required, max:20, unique
-│   │   │
-│   │   └── ItemController.php         # [Mod02] index, create, store, show,
-│   │                                  #   edit, update, deactivate,
-│   │                                  #   importForm, import
-│   │                                  # index: filter brand/cat/active/keyword
-│   │                                  #   + cascading brand↔category map
-│   │                                  # show: audit log paginate 10
-│   │                                  # parseKeyValue: attr_keys[]/attr_values[]
-│   │                                  #   → attributes_json
-│   │                                  # import: max 20MB, ExcelImportService
-│   │
-│   ├── Policies/
-│   │   ├── BrandPolicy.php            # [Mod02] viewAny, view, create, update,
-│   │   │                              #   deactivate
-│   │   │                              # Semua cek: user->hasPermission(slug)
-│   │   │
-│   │   ├── CategoryPolicy.php         # [Mod02] viewAny, view, create, update,
-│   │   │                              #   deactivate
-│   │   │
-│   │   ├── UomPolicy.php              # [Mod02] viewAny, view, create, update,
-│   │   │                              #   deactivate
-│   │   │
-│   │   └── ItemPolicy.php             # [Mod02] viewAny, view, create, update,
-│   │                                  #   deactivate, import
-│   │                                  # import: cek permission 'items.import'
-│   │
-│   └── Services/Product/
-│       └── ExcelImportService.php     # [Mod02] Import 11 sheet Excel → SKU + price
-│                                      # sheetConfig: [headerRow, brandCode,
-│                                      #   catCode, uomCode, handlerMethod]
-│                                      # Cache: brandCache, categoryCache,
-│                                      #        uomCache, priceListCache
-│                                      # upsertItem(): dedup suffix -V2, audit OK
-│                                      # upsertPrice(): PriceList::firstOrCreate
-│                                      # Helpers: parsePrice, parseKemasan,
-│                                      #   canonicalInch, isLikelyHeader, slug
-│                                      # Library: shuchkin/simplexlsx (no ext-zip)
-│                                      # Return: [created, skipped, failed, errors]
-│
-├── app/Console/Commands/
-│   └── ImportProductsCommand.php      # [Mod02] php artisan products:import {path?}
-│                                      # Auto-cari .xlsx di storage/app/imports/
-│                                      #   jika path tidak diberikan
-│
-├── database/
-│   ├── migrations/
-│   │   ├── 2026_02_27_200001_create_brands_table.php
-│   │   ├── 2026_02_27_200002_create_categories_table.php    ← parent_id self-ref
-│   │   ├── 2026_02_27_200003_create_uoms_table.php
-│   │   ├── 2026_02_27_200004_create_items_table.php         ← 3 JSON cols
-│   │   ├── 2026_02_27_200005_create_item_barcodes_table.php
-│   │   ├── 2026_02_27_200006_create_price_lists_table.php
-│   │   ├── 2026_02_27_200007_create_price_list_items_table.php
-│   │   ├── 2026_02_27_200008_create_attribute_definitions_table.php
-│   │   │   (juga membuat category_attribute_sets via pivot dalam 1 migration)
-│   │   └── 2026_02_27_300001_add_is_active_to_uoms_table.php ← [Fix] is_active
-│   │
-│   └── seeders/
-│       ├── UomSeeder.php              # 9 satuan; updateOrCreate (idempotent)
-│       ├── CategorySeeder.php         # 7 kategori root; updateOrCreate
-│       ├── BrandSeeder.php            # 10 brand; updateOrCreate
-│       └── AttributeDefinitionSeeder.php # 19 definitions; updateOrCreate
-│
-├── resources/views/admin/
-│   ├── brands/      index, create, edit
-│   ├── categories/  index, create, edit
-│   ├── uoms/        index, create, edit
-│   └── items/       index, create, edit, show, import
-│
-└── tests/Feature/Module02/
-    ├── T0201ItemCrudTest.php          # 11 tests: Item CRUD & permission guard
-    └── T0202BrandCategoryUomTest.php  # 21 tests: Brand/Category/UoM CRUD
-
-
-================================================================================
- I. ROUTE MAP LENGKAP (MODULE 02)
-================================================================================
-
-  Semua route MODULE 02 berada dalam middleware group: auth, auth.session, active
-
-  METHOD   URI                                      NAME                         HANDLER
-  ──────   ───────────────────────────────────────  ───────────────────────────  ──────────────────────────────
-  ── Master Data: Brand ─────────────────────────────────────────────────────────────────────────────────────
-  GET      /admin/brands                            admin.brands.index           BrandController::index
-  GET      /admin/brands/create                     admin.brands.create          BrandController::create
-  POST     /admin/brands                            admin.brands.store           BrandController::store
-  GET      /admin/brands/{brand}/edit               admin.brands.edit            BrandController::edit
-  PUT      /admin/brands/{brand}                    admin.brands.update          BrandController::update
-  PATCH    /admin/brands/{brand}/deactivate         admin.brands.deactivate      BrandController::deactivate
-  (tidak ada DELETE route untuk brands)
-
-  ── Master Data: Category ──────────────────────────────────────────────────────────────────────────────────
-  GET      /admin/categories                        admin.categories.index       CategoryController::index
-  GET      /admin/categories/create                 admin.categories.create      CategoryController::create
-  POST     /admin/categories                        admin.categories.store       CategoryController::store
-  GET      /admin/categories/{category}/edit        admin.categories.edit        CategoryController::edit
-  PUT      /admin/categories/{category}             admin.categories.update      CategoryController::update
-  PATCH    /admin/categories/{category}/deactivate  admin.categories.deactivate  CategoryController::deactivate
-  (tidak ada DELETE route untuk categories)
-
-  ── Master Data: UoM ───────────────────────────────────────────────────────────────────────────────────────
-  GET      /admin/uoms                              admin.uoms.index             UomController::index
-  GET      /admin/uoms/create                       admin.uoms.create            UomController::create
-  POST     /admin/uoms                              admin.uoms.store             UomController::store
-  GET      /admin/uoms/{uom}/edit                   admin.uoms.edit              UomController::edit
-  PUT      /admin/uoms/{uom}                        admin.uoms.update            UomController::update
-  PATCH    /admin/uoms/{uom}/deactivate             admin.uoms.deactivate        UomController::deactivate
-  (tidak ada DELETE route untuk uoms)
-
-  ── Master Data: Item / SKU ────────────────────────────────────────────────────────────────────────────────
-  GET      /admin/items/import                      admin.items.import-form      ItemController::importForm
-  POST     /admin/items/import                      admin.items.import           ItemController::import
-  GET      /admin/items                             admin.items.index            ItemController::index
-  GET      /admin/items/create                      admin.items.create           ItemController::create
-  POST     /admin/items                             admin.items.store            ItemController::store
-  GET      /admin/items/{item}                      admin.items.show             ItemController::show
-  GET      /admin/items/{item}/edit                 admin.items.edit             ItemController::edit
-  PUT      /admin/items/{item}                      admin.items.update           ItemController::update
-  PATCH    /admin/items/{item}/deactivate           admin.items.deactivate       ItemController::deactivate
-  (tidak ada DELETE route untuk items)
-
-  CATATAN: Route import HARUS didefinisikan SEBELUM Route::resource('items', ...)
-  agar /admin/items/import tidak ditangkap sebagai /admin/items/{item}.
-
-
-================================================================================
- J. FLOW END-TO-END: ITEM (SKU) MANAGEMENT
-================================================================================
-
-═══════════════════════════════════════════════════════════════════════════════
- J.1 LIHAT DAFTAR ITEM (INDEX)
-═══════════════════════════════════════════════════════════════════════════════
-
-  Request: GET /admin/items[?brand_id=&category_id=&active=&q=]
-  Middleware: auth → auth.session → active
-  Controller: ItemController::index()
-
-  Flow:
-  1. Gate::authorize('viewAny', Item::class)
-     → ItemPolicy::viewAny() → user->hasPermission('items.view')
-     → Super Admin: bypass; Tidak punya: 403 Forbidden
-
-  2. Query: Item::with(['brand','category','baseUom'])
-     Filter opsional (query string):
-     - brand_id    : WHERE brand_id = ?
-     - category_id : WHERE category_id = ?
-     - active      : WHERE is_active = (bool)
-     - q           : WHERE name LIKE %? OR sku_code LIKE %?
-     Paginate 10, withQueryString()
-
-  3. Build cascading filter map dari items:
-     SELECT DISTINCT brand_id, category_id FROM items WHERE NOT NULL
-     → brandToCategories[brand_id] → [category_id,...]
-     → categoryToBrands[category_id] → [brand_id,...]
-     (untuk filter UI yang saling menyesuaikan)
-
-  4. Return view admin.items.index (items, brands, categories, filterMap)
-
-
-═══════════════════════════════════════════════════════════════════════════════
- J.2 TAMBAH ITEM (CREATE + STORE)
-═══════════════════════════════════════════════════════════════════════════════
-
-  Request: GET /admin/items/create
-  Flow:
-  1. Gate::authorize('create', Item::class) → 'items.create'
-  2. Load: brands (active), categories (active), uoms (all, order by code)
-  3. Return view admin.items.create
-
-  Request: POST /admin/items
-  Flow:
-  1. Gate::authorize('create', Item::class)
-  2. validated(): validasi input (lihat D2)
-  3. parseKeyValue(attr_keys[], attr_values[]) → attributes_json
-     parseKeyValue(custom_keys[], custom_values[]) → custom_fields_json
-  4. Item::create($data)
-     → Auditable: action='create', auditable_type='App\Models\Item'
-       new_values = semua atribut item
-  5. Redirect admin.items.index + flash 'Produk berhasil ditambahkan.'
-
-
-═══════════════════════════════════════════════════════════════════════════════
- J.3 EDIT ITEM (EDIT + UPDATE)
-═══════════════════════════════════════════════════════════════════════════════
-
-  Request: GET /admin/items/{item}/edit
-  Flow:
-  1. Gate::authorize('update', $item) → 'items.update'
-  2. Load formData (brands, categories, uoms)
-  3. Return view admin.items.edit
-
-  Request: PUT /admin/items/{item}
-  Flow:
-  1. Gate::authorize('update', $item)
-  2. validated($request, $item): sama seperti store, KECUALI
-     sku_code: Rule::unique('items','sku_code')->ignore($item->id)
-  3. parseKeyValue → attributes_json, custom_fields_json
-  4. $item->update($data)
-     → Auditable: action='update'
-       old_values = nilai lama kolom yang berubah
-       new_values = nilai baru kolom yang berubah
-  5. Redirect admin.items.index + flash 'Produk berhasil diperbarui.'
-
-
-═══════════════════════════════════════════════════════════════════════════════
- J.4 NONAKTIFKAN ITEM (DEACTIVATE)
-═══════════════════════════════════════════════════════════════════════════════
-
-  Request: PATCH /admin/items/{item}/deactivate
-  Flow:
-  1. Gate::authorize('deactivate', $item) → 'items.deactivate'
-  2. $item->update(['is_active' => false])
-     → Auditable: action='update', old={is_active:true}, new={is_active:false}
-  3. Redirect admin.items.index + flash 'Produk berhasil dinonaktifkan.'
-
-  Catatan:
-  - Tidak ada DELETE route; item tetap ada di DB
-  - Item bisa dilihat kembali dengan filter active=0
-  - Histori transaksi yang sudah ada tidak terpengaruh
-
-
-═══════════════════════════════════════════════════════════════════════════════
- J.5 DETAIL ITEM (SHOW)
-═══════════════════════════════════════════════════════════════════════════════
-
-  Request: GET /admin/items/{item}
-  Flow:
-  1. Gate::authorize('view', $item) → 'items.view'
-  2. Query audit log: AuditLog WHERE auditable_type='App\Models\Item'
-     AND auditable_id=$item->id ORDER BY created_at DESC PAGINATE 10
-  3. $item->load(['brand','category','baseUom','purchaseUom',
-                   'barcodes','priceListItems.priceList'])
-  4. Return view admin.items.show (item, auditLogs)
-
-
-═══════════════════════════════════════════════════════════════════════════════
- J.6 IMPORT EXCEL (IMPORT FORM + PROCESS)
-═══════════════════════════════════════════════════════════════════════════════
-
-  Request: GET /admin/items/import
-  Flow:
-  1. Gate::authorize('import', Item::class) → 'items.import'
-  2. Return view admin.items.import
-
-  Request: POST /admin/items/import (multipart/form-data)
-  Flow:
-  1. Gate::authorize('import', Item::class)
-  2. Validasi: excel_file required, mimes:xlsx,xls, max:20480 (20 MB)
-  3. $request->file('excel_file')->getRealPath()
-  4. ExcelImportService::import($path):
-     a. SimpleXLSX::parse($filePath)
-     b. Loop sheetNames():
-        - trim(sheetName) → lookup sheetConfig
-        - Skip jika tidak dikenali
-        - Call handler method
-     c. Setiap handler:
-        - getHeaders(rows, headerRow)
-        - findCol / findLastCol → deteksi posisi kolom
-        - Loop data rows: skip jika kosong / isLikelyHeader
-        - Build $attrs (attributes_json)
-        - upsertItem()
-     d. upsertItem():
-        - Validasi: skuCode dan name tidak kosong → failed jika kosong
-        - Cek sku_code EXISTS:
-            nama sama → skip (skipped++)
-            nama beda → suffix -V2 dst (max attempt 5)
-        - Item::create() + raw_source_json disimpan
-        - Jika price > 0 → upsertPrice()
-        - Auditable: action='create' otomatis
-     e. upsertPrice():
-        - PriceList::firstOrCreate(name, scope=GLOBAL, effective_from=today)
-        - PriceListItem::updateOrCreate(price_list_id + item_id)
-  5. Redirect importForm + flash import_result
-     (created, skipped, failed, errors[])
-
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │ DIAGRAM ALUR IMPORT                                                  │
-  │                                                                      │
-  │  POST /import ──► validate file ──► ExcelImportService::import()     │
-  │                                           │                          │
-  │                                    SimpleXLSX::parse()               │
-  │                                           │                          │
-  │                              Loop sheetNames()                       │
-  │                                   │                                  │
-  │                          Match sheetConfig?                          │
-  │                           │             │                            │
-  │                          Yes            No → skip                    │
-  │                           │                                          │
-  │                    call handler(rows, headerRow, ...)                │
-  │                           │                                          │
-  │                    for each data row:                                │
-  │                     build attrs, name, skuCode                       │
-  │                           │                                          │
-  │                    upsertItem()                                      │
-  │                     ├─ duplikat nama sama → skip                     │
-  │                     ├─ duplikat nama beda → suffix -V2               │
-  │                     ├─ Item::create() → Audit(create)                │
-  │                     └─ upsertPrice() → PriceListItem                 │
-  │                                                                      │
-  │                    return {created, skipped, failed, errors[]}       │
-  └──────────────────────────────────────────────────────────────────────┘
-
-
-================================================================================
- K. FLOW END-TO-END: BRAND / CATEGORY / UOM
-================================================================================
-
-══════════════════════════════════════════════════════════════
- K.1 BRAND CRUD
-══════════════════════════════════════════════════════════════
-
-  INDEX   GET  /admin/brands
-    1. Gate::authorize('viewAny', Brand::class) → 'brands.view'
-    2. Brand::orderBy('name')->paginate(10)
-    3. Return view admin.brands.index
-
-  CREATE  GET  /admin/brands/create
-    1. Gate::authorize('create', Brand::class) → 'brands.create'
-    2. Return view admin.brands.create
-
-  STORE   POST /admin/brands
-    1. Gate::authorize('create', Brand::class)
-    2. Validasi: name required, max:100, unique:brands,name
-    3. Brand::create($data)
-       → Auditable: action='create', new_values={name, is_active}
-    4. Redirect brands.index + flash 'Brand berhasil ditambahkan.'
-
-  EDIT    GET  /admin/brands/{brand}/edit
-    1. Gate::authorize('update', $brand) → 'brands.update'
-    2. Return view admin.brands.edit (brand)
-
-  UPDATE  PUT  /admin/brands/{brand}
-    1. Gate::authorize('update', $brand)
-    2. Validasi: name required, unique ignore $brand->id
-    3. $brand->update($data)
-       → Auditable: action='update', old/new_values
-    4. Redirect brands.index + flash 'Brand berhasil diperbarui.'
-
-  DEACTIVATE  PATCH  /admin/brands/{brand}/deactivate
-    1. Gate::authorize('deactivate', $brand) → 'brands.deactivate'
-    2. $brand->update(['is_active' => false])
-       → Auditable: action='update',
-         old_values={is_active:true}, new_values={is_active:false}
-    3. Redirect brands.index + flash 'Brand berhasil dinonaktifkan.'
-
-══════════════════════════════════════════════════════════════
- K.2 CATEGORY — PERBEDAAN DARI BRAND
-══════════════════════════════════════════════════════════════
-
-  CREATE/EDIT:
-  - load $parents = Category::where('is_active',true)->whereNull('parent_id')
-    (edit: exclude diri sendiri dari pilihan parent)
-  - Form memiliki dropdown parent_id (nullable)
-
-  STORE/UPDATE validasi tambahan:
-  - parent_id: nullable, exists:categories,id
-  - code: nullable, max:20, unique:categories,code (ignore self saat update)
-
-  Sub-kategori: parent() dan children() tersedia di model Category.
-  Seeder hanya membuat 7 kategori root (parent_id=null).
-
-══════════════════════════════════════════════════════════════
- K.3 UOM — PERBEDAAN DARI BRAND
-══════════════════════════════════════════════════════════════
-
-  STORE/UPDATE:
-  - code di-uppercase otomatis: $data['code'] = strtoupper($data['code'])
-  - Validasi: code required, max:20, unique:uoms,code (ignore self saat update)
-  - name required, max:50
-
-  DEACTIVATE: sama seperti brand.
-  Perubahan UoM ter-audit via Auditable trait.
-
-
-================================================================================
- L. POLICY & AUTHORIZATION (MASTER DATA PRODUK)
-================================================================================
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ L.1 DAFTAR POLICY DAN PERMISSION                                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  MODEL      POLICY           METHOD → PERMISSION YANG DICEK                 │
-│  ─────────  ───────────────  ──────────────────────────────────────────     │
-│  Brand      BrandPolicy      viewAny/view → brands.view                     │
-│                              create      → brands.create                    │
-│                              update      → brands.update                    │
-│                              deactivate  → brands.deactivate                │
-│                                                                             │
-│  Category   CategoryPolicy   viewAny/view → categories.view                 │
-│                              create      → categories.create                │
-│                              update      → categories.update                │
-│                              deactivate  → categories.deactivate            │
-│                                                                             │
-│  Uom        UomPolicy        viewAny/view → uoms.view                       │
-│                              create      → uoms.create                      │
-│                              update      → uoms.update                      │
-│                              deactivate  → uoms.deactivate                  │
-│                                                                             │
-│  Item       ItemPolicy       viewAny/view → items.view                      │
-│                              create      → items.create                     │
-│                              update      → items.update                     │
-│                              deactivate  → items.deactivate                 │
-│                              import      → items.import                     │
-│                                                                             │
-│  Semua policy: user->hasPermission(slug)                                    │
-│  Super Admin bypass otomatis via User::isSuperAdmin() di hasPermission()    │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ L.2 MAPPING ROLE → PERMISSION MASTER DATA                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  SUPER ADMIN:                                                               │
-│  → SEMUA permission (bypass di User::hasPermission())                       │
-│                                                                             │
-│  OWNER:                                                                     │
-│  → items.view, brands.view, categories.view, uoms.view                      │
-│  (read-only global; tidak ada create/update/deactivate/import)              │
-│                                                                             │
-│  ADMIN CABANG:                                                              │
-│  → items.view, items.create, items.update, items.deactivate, items.import   │
-│  → brands.view, brands.create, brands.update, brands.deactivate             │
-│  → categories.view, categories.create, categories.update,                   │
-│    categories.deactivate                                                    │
-│  → uoms.view, uoms.create, uoms.update, uoms.deactivate                     │
-│  (admin boleh kelola master data karena katalog bersifat global)            │
-│                                                                             │
-│  KASIR:                                                                     │
-│  → items.view, brands.view, categories.view, uoms.view                      │
-│  (baca saja, untuk keperluan POS search)                                    │
-│                                                                             │
-│  ACCOUNTING:                                                                │
-│  → items.view, brands.view, categories.view, uoms.view                      │
-│  (baca saja)                                                                │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ L.3 ALUR PENGECEKAN AUTHORIZATION                                           │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  LAYER 1: Middleware auth (Authenticate)                                    │
-│    → User harus login; jika tidak → redirect /login                         │
-│                                                                             │
-│  LAYER 2: Middleware active (EnsureUserIsActive)                            │
-│    → is_active = false → logout + redirect /login                           │
-│                                                                             │
-│  LAYER 3: Gate::authorize() di Controller                                   │
-│    → Gate memanggil Policy sesuai model                                     │
-│    → Policy: user->hasPermission(slug)                                      │
-│    → Super Admin: return true (bypass semua)                                │
-│    → Tidak punya permission: throw 403 Forbidden                            │
-│                                                                             │
-│  CATATAN: Tidak ada RequirePermission middleware di route master data.      │
-│  Authorization ditangani sepenuhnya via Gate::authorize() di controller.    │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-
-================================================================================
- M. AUDIT TRAIL — MASTER DATA PRODUK
-================================================================================
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ M.1 PENCATATAN OTOMATIS (via Auditable Trait)                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Model yang menggunakan Auditable: Brand, Category, Uom, Item               │
-│  (PriceList & PriceListItem tidak menggunakan Auditable)                    │
-│                                                                             │
-│  EVENT         AKSI                                                         │
-│  ───────────   ────────────────────────────────────────────────────         │
-│  created       action='create'                                              │
-│                new_values = semua atribut model                             │
-│                auditable_type = FQCN (mis. 'App\Models\Item')               │
-│                                                                             │
-│  updated       action='update'                                              │
-│                old_values = nilai lama kolom yang berubah                   │
-│                new_values = nilai baru kolom yang berubah                   │
-│                Skip jika tidak ada perubahan yang dicatat                   │
-│                                                                             │
-│  deleted       action='delete'                                              │
-│                old_values = semua atribut                                   │
-│                (Item & Brand tidak punya route DELETE)                      │
-│                                                                             │
-│  $auditExclude default: ['password', 'remember_token']                      │
-│  Kolom JSON (attributes_json, dll) ikut tercatat saat berubah               │
-│                                                                             │
-│  SETIAP entry audit berisi:                                                 │
-│  - user_id    : Auth::id() saat operasi dilakukan                           │
-│  - ip_address : IP address request                                          │
-│  - user_agent : Browser/client info                                         │
-│  - created_at : timestamp kejadian                                          │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ M.2 IMMUTABILITY AUDIT LOG                                                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  audit_logs bersifat append-only. Dijaga oleh:                              │
-│  - Model boot() melempar LogicException jika ada update atau delete         │
-│  - Tidak ada route/controller untuk mengedit/menghapus audit log            │
-│  - Tabel hanya punya created_at (tanpa updated_at)                          │
-│  - auditable_type menggunakan get_class() — FQCN, bukan class_basename()    │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ M.3 MELIHAT AUDIT LOG PRODUK                                                │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Via Item Show Page (admin/items/{item}):                                   │
-│  - Filter: auditable_type='App\Models\Item', auditable_id=$item->id         │
-│  - ORDER BY created_at DESC, PAGINATE 10                                    │
-│                                                                             │
-│  Via Audit Log Global (admin/audit-logs):                                   │
-│  - Filter manual: auditable_type, user_id, action, date_from, date_to       │
-│  - Middleware: permission:audit_logs.view                                   │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-
-================================================================================
- N. KEAMANAN (SECURITY MEASURES) — MASTER DATA PRODUK
-================================================================================
-
-  ┌───────────────────────────────────────────────────────────────────────┐
-  │ MEASURE                         IMPLEMENTASI                          │
-  ├───────────────────────────────────────────────────────────────────────┤
-  │ CSRF Protection                 VerifyCsrfToken middleware (web group)│
-  │ Auth Middleware                 Semua route /admin/* butuh login      │
-  │ Active Account Check            EnsureUserIsActive middleware         │
-  │ Policy-Based Authorization      BrandPolicy, CategoryPolicy,          │
-  │                                 UomPolicy, ItemPolicy via             │
-  │                                 Gate::authorize() di setiap action    │
-  │ Super Admin Bypass              Tidak perlu mapping permission di DB  │
-  │ Import File Validation          mimes:xlsx,xls, max:20480 (20 MB)     │
-  │ Input Validation                Request::validate() dengan rules      │
-  │                                 ketat di setiap controller            │
-  │ Unique Constraint DB            sku_code, brand.name, category.code,  │
-  │                                 uom.code semua UNIQUE di DB           │
-  │ No Delete Route                 Item, Brand, Category, UoM tidak ada  │
-  │                                 route DELETE; hanya deactivate        │
-  │ Immutable Audit Log             AuditLog::boot() throw LogicException │
-  │                                 pada updating/deleting event          │
-  │ raw_source_json                 Jejak setiap row import tersimpan     │
-  │                                 untuk audit & re-import               │
-  │ SKU Deduplication               Suffix -V2 otomatis cegah duplikat    │
-  │                                 dari file Excel yang di-re-import     │
-  └───────────────────────────────────────────────────────────────────────┘
-
-
-================================================================================
- O. CATATAN & PERTIMBANGAN ARSITEKTUR
-================================================================================
-
-  1. KATALOG SKU BERSIFAT GLOBAL
-     Item, Brand, Category, UoM adalah data global — tidak per-cabang.
-     Pricing juga global (scope=GLOBAL) untuk saat ini.
-     Override harga per cabang (scope=BRANCH) akan digunakan di Module 03+.
-
-  2. BRANCH SYSTEM (BELUM LENGKAP — Module 03+)
-     Tabel branches belum dibuat. Model stub Branch.php sudah ada di
-     app/Models/Branch.php agar User::branch() tidak throw Class Not Found.
-     FK dari users.branch_id ke branches akan ditambahkan saat diperlukan.
-
-  3. FORM ATRIBUT DI UI (MVP vs Rencana)
-     Implementasi saat ini: pasangan input attr_keys[]/attr_values[] (key-value
-     row form). Controller memproses via ItemController::parseKeyValue().
-     Rencana: form otomatis berbasis category_attribute_sets (dynamic form
-     per kategori dengan type validation) — belum diimplementasikan di MVP.
-
-  4. IMPORT EXCEL (OPERASIONAL)
-     ExcelImportService tidak membutuhkan ext-zip (tidak tersedia di PHP 8.4.12
-     pada server). Library shuchkin/simplexlsx adalah pure PHP.
-     Import tidak punya preview/dry-run; langsung proses dan tampilkan summary.
-     Untuk re-import: baris yang sku_code + nama sama di-skip; nama berbeda
-     mendapat suffix -V2 otomatis.
-
-  5. SUPER ADMIN BYPASS
-     Super Admin mendapat akses penuh via bypass di User::hasPermission().
-     Tidak perlu entry di role_permissions untuk super_admin.
-
-  6. PACK_QTY UNTUK KONVERSI KEMASAN
-     items.pack_qty (decimal 12,4) menyimpan berapa base_uom per purchase_uom.
-     Contoh: 1 BOX = 36 PCS → pack_qty = 36.
-     Digunakan di modul Purchasing/GRN untuk konversi unit beli ke unit stok.
-
-  7. ATTRIBUTE DEFINITIONS (KONTROL ATRIBUT DINAMIS)
-     19 definisi + category_attribute_sets tersedia sebagai referensi.
-     Saat ini belum auto-generate form di UI.
-     Data seeder sudah lengkap (17 cable_type options di AttributeDefinitionSeeder).
-
-  8. TIDAK ADA HARD DELETE UNTUK MASTER DATA
-     Brand, Category, Uom, Item tidak memiliki route DELETE.
-     Deactivate (is_active=false) adalah satu-satunya cara "menghapus".
-     Ini menjaga integritas referensial terhadap transaksi, stok, dan histori.
-
-  9. ARTISAN COMMAND IMPORT
-     php artisan products:import {path?}
-     Tanpa path: auto-cari .xlsx pertama di storage/app/imports/.
-     Berguna untuk seeding awal di server tanpa akses UI.
-
-
-================================================================================
- P. TEST COVERAGE — MODULE 02
-================================================================================
-
-  File: tests/Feature/Module02/T0201ItemCrudTest.php  (11 tests)
-  ─────────────────────────────────────────────────────────────────────────────
-  super_admin_can_create_an_item               POST store → DB + audit log create
-  item_requires_base_uom_id                    Validasi wajib base_uom_id
-  duplicate_sku_code_is_rejected               Unique constraint sku_code
-  kasir_cannot_create_an_item                  403 Forbidden
-  kasir_can_view_items_list                    200 OK (items.view)
-  admin_can_create_an_item                     Verifikasi permission create
-  super_admin_can_update_an_item               PUT update + audit log update
-  kasir_cannot_update_an_item                  403 Forbidden
-  super_admin_can_deactivate_an_item           is_active=false + audit log
-  kasir_cannot_deactivate_an_item              403, is_active tetap true
-  admin_can_deactivate_an_item                 Verifikasi permission deactivate
-  super_admin_can_view_item_detail             GET show 200 OK
-  items_index_filters_by_active_status         Filter active=1 menyembunyikan inactive
-
-  File: tests/Feature/Module02/T0202BrandCategoryUomTest.php  (21 tests)
-  ─────────────────────────────────────────────────────────────────────────────
-  [Brand - 7 tests]
-  super_admin_can_create_a_brand               create + audit log
-  duplicate_brand_name_is_rejected             unique name
-  kasir_cannot_create_a_brand                  403 Forbidden
-  kasir_can_view_brands_list                   200 OK
-  super_admin_can_update_a_brand               update brand
-  super_admin_can_deactivate_a_brand           is_active=false + audit log
-  kasir_cannot_deactivate_a_brand              403 Forbidden
-
-  [Category - 7 tests]
-  super_admin_can_create_a_category            create + assertDatabaseHas
-  duplicate_category_code_is_rejected          unique code
-  category_can_have_a_parent                   parent_id support
-  kasir_cannot_create_a_category               403 Forbidden
-  kasir_can_view_categories_list               200 OK
-  super_admin_can_deactivate_a_category        is_active=false
-  (1 test gabung dengan admin di akhir)
-
-  [UoM - 7 tests]
-  super_admin_can_create_a_uom                 create UoM
-  duplicate_uom_code_is_rejected               PCS sudah ada via seeder
-  kasir_cannot_create_a_uom                    403 Forbidden
-  kasir_can_view_uoms_list                     200 OK
-  super_admin_can_update_a_uom                 update name UoM
-  super_admin_can_deactivate_a_uom             is_active=false + audit log
-  kasir_cannot_deactivate_a_uom                403 Forbidden
-  admin_can_create_brand_and_category          Verifikasi permission dua model
-
-  Setup: RefreshDatabase + DatabaseSeeder (MySQL; DB: retail_control_test)
-  CATATAN: Jika DB di-refresh sangat cepat setelah INSERT seeder, bisa muncul
-  "Duplicate entry" pada seeder. Ini isu pre-existing di environment test,
-  bukan bug pada kode aplikasi.
-
-LAMPIRAN: CONTOH BENTUK attributes_json (SINGKAT)
-- Pipa:     {"diameter_mm":25,"diameter_inch":"1\"","od_mm":32,"spec":"AW","panjang_m":4}
-- Fitting:  {"size_mm":50,"size_inch":"2\"","jenis":"CLEAN OUT (AW)","isi_per_box":36}
-- Kabel:    {"cable_size":"2x1,5","cable_size_unit":"mm2","cable_type":"NYM"}
-- Pompa:    {"outlet":"0.75\"","power_watt":180,"type_text":"2\" SDM 1/26 - 0.25HP"}
-- Chemical: {"item_name":"NO DROP WATERPROOFING (READY MIX)","pack_size":4,"pack_size_unit":"Kg"}
-- Mortar:   {"merk":"MU","produk":"MU-200","jenis":"MU 200 20 KG"}
-
-
-================================================================================
-   AKHIR DOKUMEN
-================================================================================
+MANAGEMENT PRODUCT
+Last verified: 2026-03-11
+
+1. Ringkasan
+
+Modul product saat ini sudah mencakup fondasi master data produk yang cukup lengkap untuk tahap awal:
+- brand
+- category
+- UoM
+- item
+- multi-unit product per item
+- attribute definition per tenant
+- category attribute set
+- import Excel master produk
+- pricing foundation via price list
+- CRUD barcode / QR code per item
+
+Desain sekarang mengikuti PRD sepenuhnya:
+- item wajib punya satuan dasar stok
+- item bisa punya beberapa satuan tambahan dengan konversi eksplisit
+- default satuan jual dan default satuan beli dipisahkan
+- atribut fleksibel tetap disimpan di JSON + definisi atribut
+- barcode/QR code per item dapat dikelola via UI
+- tenant isolation aktif di policy, query, validation, dan create hook
+
+2. Scope yang Sudah Implemented
+
+Brand
+- list
+- create
+- edit
+- deactivate
+
+Category
+- list
+- create
+- edit
+- deactivate
+- parent category 1 level
+
+UoM
+- list
+- create
+- edit
+- deactivate
+
+Attribute Definition
+- list
+- create
+- edit
+- assign ke category
+
+Item
+- list dengan filter brand, category, status, q
+- create
+- edit
+- detail (dengan tampilan barcode)
+- deactivate
+- import Excel
+- multi-unit configuration di form item
+
+Barcode / QR Code (PRD §11.3)
+- list barcode per item
+- tambah barcode baru (dengan pilihan satuan opsional)
+- set barcode sebagai primary
+- hapus barcode (otomatis promote barcode berikutnya sebagai primary)
+- ditampilkan di halaman detail item
+
+3. Model dan Tabel yang Dipakai
+
+brands
+- tenant_id
+- name
+- is_active
+- unique per tenant: name
+
+categories
+- tenant_id
+- parent_id nullable
+- name
+- code nullable
+- is_active
+- unique per tenant: code
+
+uoms
+- tenant_id
+- code
+- name
+- is_active
+- unique per tenant: code
+
+attribute_definitions
+- tenant_id
+- key
+- label
+- data_type
+- unit nullable
+- options_json nullable
+- is_required
+- unique per tenant: key
+
+category_attribute_sets
+- category_id
+- attribute_definition_id
+- pivot category ke attribute definition
+
+items
+- tenant_id
+- sku_code
+- name
+- brand_id nullable
+- category_id nullable
+- base_uom_id
+- selling_uom_id nullable
+- purchase_uom_id nullable
+- pack_qty
+- tax_included
+- is_stockable
+- cost_price nullable
+- selling_price nullable
+- minimum_selling_price nullable
+- is_active
+- attributes_json nullable
+- custom_fields_json nullable
+- raw_source_json nullable
+- unique per tenant: sku_code
+
+item_units
+- tenant_id
+- item_id
+- uom_id
+- conversion_qty
+- is_base
+- allow_sale
+- allow_purchase
+- is_default_sale
+- is_default_purchase
+- is_active
+- unique per item: uom_id
+
+item_barcodes
+- tenant_id
+- item_id
+- item_unit_id nullable
+- barcode
+- is_primary
+- unique per tenant: barcode
+
+price_lists
+- tenant_id
+- name
+- scope GLOBAL or BRANCH
+- branch_id nullable
+- effective_from
+- effective_to nullable
+- is_active
+
+price_list_items
+- price_list_id
+- item_id
+- sell_price
+- price_uom_id nullable
+- notes_json nullable
+
+4. Tenant Rules
+
+Aturan yang sekarang enforced:
+- semua master data produk bersifat tenant-aware
+- super_admin wajib memilih tenant saat create brand, category, UoM, item, attribute definition, dan import
+- non platform admin otomatis memakai tenant miliknya
+- brand, category, UoM, attribute definition, item, dan barcode tidak bisa mereferensi data lintas tenant
+- unique validation berjalan per tenant
+
+Implementasi penting:
+- app/Http/Controllers/Concerns/InteractsWithTenantContext.php
+- app/Traits/TenantScoped.php
+- app/Policies/BrandPolicy.php
+- app/Policies/CategoryPolicy.php
+- app/Policies/UomPolicy.php
+- app/Policies/AttributeDefinitionPolicy.php
+- app/Policies/ItemPolicy.php (termasuk method manageBarcodes)
+
+5. Struktur Atribut Produk
+
+Pendekatan yang dipakai:
+- definisi atribut disimpan di attribute_definitions
+- category dihubungkan ke definisi atribut lewat category_attribute_sets
+- nilai aktual item disimpan di items.attributes_json
+
+Konsekuensi:
+- kategori bisa punya atribut teknis berbeda
+- form item merender field dinamis berdasarkan kategori
+- struktur tetap fleksibel tanpa menambah kolom tetap setiap kali ada variasi spesifikasi
+
+Ini selaras dengan kebutuhan PRD untuk produk heterogen dan sesuai catatan engineering PRD §22.
+
+6. Struktur Multi-Satuan Produk
+
+Pendekatan yang sekarang aktif:
+- base_uom_id = satuan dasar stok
+- selling_uom_id = default satuan jual
+- purchase_uom_id = default satuan beli
+- item_units = daftar semua satuan item beserta konversi ke satuan dasar
+- pack_qty dipertahankan sebagai compatibility field untuk konversi default satuan beli ke satuan dasar
+
+7. Barcode / QR Code (PRD §11.3)
+
+Pendekatan yang dipakai:
+- barcode disimpan di tabel item_barcodes terpisah
+- satu item bisa punya banyak barcode
+- satu barcode dapat terikat ke satuan tertentu (item_unit_id) atau berlaku untuk semua satuan
+- barcode utama (is_primary) digunakan sebagai referensi scan default di POS
+- barcode pertama yang ditambahkan otomatis menjadi primary
+- menghapus barcode primary akan otomatis mempromosikan barcode berikutnya
+- unique per tenant (barcode yang sama tidak bisa dipakai oleh dua item berbeda dalam satu tenant)
+
+Controller: app/Http/Controllers/Admin/ItemBarcodeController.php
+
+8. Pricing Saat Ini
+
+Harga dasar item:
+- cost_price
+- selling_price
+- minimum_selling_price
+
+Harga berbasis daftar:
+- price_lists
+- price_list_items
+- price_uom_id sudah dipakai untuk menyimpan satuan harga
+
+9. Import Excel
+
+Controller:
+- GET /admin/items/import
+- POST /admin/items/import
+
+Service:
+- app/Services/Product/ExcelImportService.php
+
+Command:
+- php artisan products:import {path?} --tenant={id}
+
+10. HTTP Routes
+
+- GET /admin/brands
+- GET /admin/brands/create
+- POST /admin/brands
+- GET /admin/brands/{brand}/edit
+- PUT /admin/brands/{brand}
+- PATCH /admin/brands/{brand}/deactivate
+
+- GET /admin/categories
+- GET /admin/categories/create
+- POST /admin/categories
+- GET /admin/categories/{category}/edit
+- PUT /admin/categories/{category}
+- PATCH /admin/categories/{category}/deactivate
+
+- GET /admin/uoms
+- GET /admin/uoms/create
+- POST /admin/uoms
+- GET /admin/uoms/{uom}/edit
+- PUT /admin/uoms/{uom}
+- PATCH /admin/uoms/{uom}/deactivate
+
+- GET /admin/attribute-definitions
+- GET /admin/attribute-definitions/create
+- POST /admin/attribute-definitions
+- GET /admin/attribute-definitions/{attribute_definition}/edit
+- PUT /admin/attribute-definitions/{attribute_definition}
+
+- GET /admin/items
+- GET /admin/items/create
+- POST /admin/items
+- GET /admin/items/{item}
+- GET /admin/items/{item}/edit
+- PUT /admin/items/{item}
+- PATCH /admin/items/{item}/deactivate
+- GET /admin/items/import
+- POST /admin/items/import
+
+- GET /admin/items/{item}/barcodes
+- POST /admin/items/{item}/barcodes
+- PATCH /admin/items/{item}/barcodes/{barcode}/set-primary
+- DELETE /admin/items/{item}/barcodes/{barcode}
+
+11. Permission Map yang Relevan
+
+- items.view
+- items.create
+- items.update
+- items.deactivate
+- items.import
+- items.manage_barcodes
+- brands.view
+- brands.create
+- brands.update
+- brands.deactivate
+- categories.view
+- categories.create
+- categories.update
+- categories.deactivate
+- uoms.view
+- uoms.create
+- uoms.update
+- uoms.deactivate
+- attribute_definitions.view
+- attribute_definitions.create
+- attribute_definitions.update
+
+Role behavior saat ini:
+- super_admin: semua boleh
+- admin: boleh CRUD master data produk, attribute definition, import, dan manage barcode
+- owner: read only
+- kasir: read only (tidak bisa manage barcode)
+
+12. Test Coverage
+
+Feature test yang aktif:
+- T0201ItemCrudTest
+- T0202BrandCategoryUomTest
+- T0203AttributeDefinitionCrudTest
+- T0204ItemBarcodeCrudTest
+
+Coverage yang sudah terbukti:
+- create item
+- create item dengan beberapa satuan jual
+- validasi default satuan jual harus berasal dari item_units
+- update item
+- deactivate item
+- item detail
+- filter item list
+- create brand, category, UoM
+- create dan update attribute definition
+- duplicate validation
+- tenant wajib dipilih oleh super_admin
+- kasir tidak bisa create, update, deactivate
+- admin dapat tambah barcode ke item
+- barcode pertama otomatis menjadi primary
+- barcode duplikat dalam tenant ditolak
+- admin dapat set barcode sebagai primary
+- admin dapat hapus barcode
+- hapus primary barcode otomatis mempromosikan barcode berikutnya
+- kasir tidak bisa manage barcode
+
+13. Alignment dengan PRD
+
+Sudah selaras:
+- produk heterogen didukung (PRD §11.3)
+- tenant isolation aktif
+- atribut teknis fleksibel aktif (PRD §22 poin 1-2)
+- produk punya satuan dasar stok
+- produk bisa punya beberapa satuan
+- harga jual dan minimum harga sudah ada
+- import master produk sudah ada
+- QR code / barcode per item sudah ada (PRD §11.3)
+
+Belum ada di modul ini:
+- pricing rule engine
+- multi-price per price list untuk beberapa satuan item sekaligus
+- customer specific pricing
+- branch specific pricing UI
+- stock mutation dan availability per location di UI product
+
+14. Kesimpulan
+
+Modul product sekarang sudah selaras penuh dengan PRD §11.3. Fondasi atribut dinamis, tenant isolation, multi-satuan produk, dan barcode/QR code sudah ada. Area yang sengaja masih tipis adalah pricing orchestration dan interaksi inventory yang lebih kaya, karena itu memang lebih tepat dimatangkan bersama modul POS, procurement, dan inventory flow berikutnya.

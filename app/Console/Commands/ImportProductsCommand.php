@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
  */
 class ImportProductsCommand extends Command
 {
-    protected $signature   = 'products:import {path? : Path ke file Excel (.xlsx)}';
+    protected $signature   = 'products:import {path? : Path ke file Excel (.xlsx)} {--tenant= : ID tenant tujuan import}';
     protected $description = 'Import master produk SKU dari Excel (MASTER BOOK TOKO format)';
 
     public function handle(ExcelImportService $service): int
@@ -40,7 +40,14 @@ class ImportProductsCommand extends Command
         $this->info("Memulai import dari: {$path}");
         $this->newLine();
 
-        $result = $service->import($path);
+        $tenantId = (int) $this->option('tenant');
+        if ($tenantId <= 0) {
+            $this->error('Opsi --tenant wajib diisi dengan ID tenant tujuan import.');
+
+            return Command::FAILURE;
+        }
+
+        $result = $service->import($path, $tenantId);
 
         $this->table(
             ['Metric', 'Jumlah'],

@@ -10,6 +10,21 @@
             <form method="POST" action="{{ route('admin.categories.store') }}">
                 @csrf
 
+                @if(auth()->user()->isPlatformAdmin())
+                    <div class="mb-4">
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Tenant <span class="text-red-500">*</span></label>
+                        <select name="tenant_id"
+                            onchange="window.location='{{ route('admin.categories.create') }}?tenant_id=' + this.value"
+                            class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100 @error('tenant_id') border-red-400 @enderror">
+                            <option value="">- Pilih tenant -</option>
+                            @foreach($tenants as $tenant)
+                                <option value="{{ $tenant->id }}" {{ old('tenant_id', $selectedTenantId) == $tenant->id ? 'selected' : '' }}>{{ $tenant->name }}</option>
+                            @endforeach
+                        </select>
+                        @error('tenant_id')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                    </div>
+                @endif
+
                 <div class="mb-4">
                     <label class="mb-1.5 block text-sm font-medium text-gray-700">Parent Kategori</label>
                     <select name="parent_id"
@@ -21,6 +36,9 @@
                             </option>
                         @endforeach
                     </select>
+                    @if(auth()->user()->isPlatformAdmin() && ! old('tenant_id', $selectedTenantId))
+                        <p class="mt-1 text-xs text-gray-500">Pilih tenant terlebih dahulu untuk memuat parent kategori tenant tersebut.</p>
+                    @endif
                 </div>
 
                 <div class="mb-4">

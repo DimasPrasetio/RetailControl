@@ -13,6 +13,7 @@ class AuditLog extends Model
 
     protected $fillable = [
         'user_id',
+        'tenant_id',
         'action',
         'auditable_type',
         'auditable_id',
@@ -33,6 +34,11 @@ class AuditLog extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class)->withTrashed();
+    }
+
+    public function tenant(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::class);
     }
 
     /** Guard: tidak pernah boleh update atau delete baris audit_log */

@@ -7,9 +7,31 @@ use App\Models\User;
 
 class BrandPolicy
 {
-    public function viewAny(User $user): bool   { return $user->hasPermission('brands.view'); }
-    public function view(User $user, Brand $b): bool { return $user->hasPermission('brands.view'); }
-    public function create(User $user): bool    { return $user->hasPermission('brands.create'); }
-    public function update(User $user, Brand $b): bool { return $user->hasPermission('brands.update'); }
-    public function deactivate(User $user, Brand $b): bool { return $user->hasPermission('brands.deactivate'); }
+    public function viewAny(User $user): bool
+    {
+        return $user->hasPermission('brands.view');
+    }
+
+    public function view(User $user, Brand $brand): bool
+    {
+        return $user->hasPermission('brands.view')
+            && $user->canAccessTenant($brand->tenant_id);
+    }
+
+    public function create(User $user): bool
+    {
+        return $user->hasPermission('brands.create');
+    }
+
+    public function update(User $user, Brand $brand): bool
+    {
+        return $user->hasPermission('brands.update')
+            && $user->canAccessTenant($brand->tenant_id);
+    }
+
+    public function deactivate(User $user, Brand $brand): bool
+    {
+        return $user->hasPermission('brands.deactivate')
+            && $user->canAccessTenant($brand->tenant_id);
+    }
 }

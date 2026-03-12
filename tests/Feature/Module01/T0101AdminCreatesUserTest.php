@@ -3,6 +3,7 @@
 namespace Tests\Feature\Module01;
 
 use App\Models\AuditLog;
+use App\Models\Branch;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
@@ -22,12 +23,14 @@ class T0101AdminCreatesUserTest extends TestCase
     use RefreshDatabase;
 
     private User $superAdmin;
+    private int $branchId;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->seed(DatabaseSeeder::class);
         $this->superAdmin = User::where('username', 'superadmin')->firstOrFail();
+        $this->branchId = Branch::query()->value('id');
     }
 
     /** @test */
@@ -36,14 +39,14 @@ class T0101AdminCreatesUserTest extends TestCase
         $roleId = Role::where('name', 'kasir')->value('id');
 
         $payload = [
-            'name'                  => 'Kasir Baru',
-            'username'              => 'kasir_baru',
-            'email'                 => 'kasir@test.com',
-            'password'              => 'Password1',
+            'name' => 'Kasir Baru',
+            'username' => 'kasir_baru',
+            'email' => 'kasir@test.com',
+            'password' => 'Password1',
             'password_confirmation' => 'Password1',
-            'role_id'               => $roleId,
-            'branch_id'             => 1,
-            'is_active'             => 1,
+            'role_id' => $roleId,
+            'branch_id' => $this->branchId,
+            'is_active' => 1,
         ];
 
         $this->actingAs($this->superAdmin)
@@ -53,16 +56,16 @@ class T0101AdminCreatesUserTest extends TestCase
         // User tersimpan di DB
         $this->assertDatabaseHas('users', [
             'username' => 'kasir_baru',
-            'email'    => 'kasir@test.com',
+            'email' => 'kasir@test.com',
         ]);
 
         // Audit log tercatat
         $newUser = User::where('username', 'kasir_baru')->firstOrFail();
 
         $this->assertDatabaseHas('audit_logs', [
-            'action'         => 'create',
+            'action' => 'create',
             'auditable_type' => User::class,
-            'auditable_id'   => $newUser->id,
+            'auditable_id' => $newUser->id,
         ]);
 
         // new_values tidak mengandung password
@@ -84,27 +87,27 @@ class T0101AdminCreatesUserTest extends TestCase
         // First user
         $this->actingAs($this->superAdmin)
             ->post(route('admin.users.store'), [
-                'name'                  => 'User Satu',
-                'username'              => 'duplikat',
-                'email'                 => 'duplikat@test.com',
-                'password'              => 'Password1',
+                'name' => 'User Satu',
+                'username' => 'duplikat',
+                'email' => 'duplikat@test.com',
+                'password' => 'Password1',
                 'password_confirmation' => 'Password1',
-                'role_id'               => $roleId,
-                'branch_id'             => 1,
-                'is_active'             => 1,
+                'role_id' => $roleId,
+                'branch_id' => $this->branchId,
+                'is_active' => 1,
             ]);
 
         // Second user with same username
         $this->actingAs($this->superAdmin)
             ->post(route('admin.users.store'), [
-                'name'                  => 'User Dua',
-                'username'              => 'duplikat',
-                'email'                 => 'duplikat2@test.com',
-                'password'              => 'Password1',
+                'name' => 'User Dua',
+                'username' => 'duplikat',
+                'email' => 'duplikat2@test.com',
+                'password' => 'Password1',
                 'password_confirmation' => 'Password1',
-                'role_id'               => $roleId,
-                'branch_id'             => 1,
-                'is_active'             => 1,
+                'role_id' => $roleId,
+                'branch_id' => $this->branchId,
+                'is_active' => 1,
             ])
             ->assertSessionHasErrors('username');
     }
@@ -116,14 +119,14 @@ class T0101AdminCreatesUserTest extends TestCase
 
         $this->actingAs($this->superAdmin)
             ->post(route('admin.users.store'), [
-                'name'                  => 'Owner Baru',
-                'username'              => 'owner_baru',
-                'email'                 => 'owner@test.com',
-                'password'              => 'Password1',
+                'name' => 'Owner Baru',
+                'username' => 'owner_baru',
+                'email' => 'owner@test.com',
+                'password' => 'Password1',
                 'password_confirmation' => 'Password1',
-                'role_id'               => $ownerRoleId,
-                'branch_id'             => 1, // harus ditolak untuk role global
-                'is_active'             => 1,
+                'role_id' => $ownerRoleId,
+                'branch_id' => $this->branchId, // harus ditolak untuk role global
+                'is_active' => 1,
             ])
             ->assertSessionHasErrors('branch_id');
     }
@@ -135,15 +138,40 @@ class T0101AdminCreatesUserTest extends TestCase
 
         $this->actingAs($this->superAdmin)
             ->post(route('admin.users.store'), [
-                'name'                  => 'Kasir Tanpa Cabang',
-                'username'              => 'kasir_tanpa_cabang',
-                'email'                 => 'kasir_notbranch@test.com',
-                'password'              => 'Password1',
+                'name' => 'Kasir Tanpa Cabang',
+                'username' => 'kasir_tanpa_cabang',
+                'email' => 'kasir_notbranch@test.com',
+                'password' => 'Password1',
                 'password_confirmation' => 'Password1',
-                'role_id'               => $kasirRoleId,
-                'branch_id'             => null, // wajib untuk kasir
-                'is_active'             => 1,
+                'role_id' => $kasirRoleId,
+                'branch_id' => null, // wajib untuk kasir
+                'is_active' => 1,
             ])
             ->assertSessionHasErrors('branch_id');
+    }
+
+    /** @test */
+    public function owner_can_be_created_without_branch_id(): void
+    {
+        $ownerRoleId = Role::where('name', 'owner')->value('id');
+
+        $this->actingAs($this->superAdmin)
+            ->post(route('admin.users.store'), [
+                'name' => 'Owner Global',
+                'username' => 'owner_global',
+                'email' => 'owner_global@test.com',
+                'password' => 'Password1',
+                'password_confirmation' => 'Password1',
+                'role_id' => $ownerRoleId,
+                'tenant_id' => Branch::findOrFail($this->branchId)->tenant_id,
+                'branch_id' => null,
+                'is_active' => 1,
+            ])
+            ->assertRedirect(route('admin.users.index'));
+
+        $this->assertDatabaseHas('users', [
+            'username' => 'owner_global',
+            'branch_id' => null,
+        ]);
     }
 }

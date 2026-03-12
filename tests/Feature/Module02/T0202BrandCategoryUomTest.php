@@ -6,8 +6,10 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Item;
 use App\Models\Role;
+use App\Models\Tenant;
 use App\Models\Uom;
 use App\Models\User;
+use App\Models\Branch;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -33,6 +35,8 @@ class T0202BrandCategoryUomTest extends TestCase
     private User $superAdmin;
     private User $kasir;
     private User $adminCabang;
+    private int $branchId;
+    private int $tenantId;
 
     protected function setUp(): void
     {
@@ -40,6 +44,8 @@ class T0202BrandCategoryUomTest extends TestCase
         $this->seed(DatabaseSeeder::class);
 
         $this->superAdmin = User::where('username', 'superadmin')->firstOrFail();
+        $this->branchId = Branch::query()->value('id');
+        $this->tenantId = Tenant::query()->value('id');
 
         $kasirRoleId = Role::where('name', 'kasir')->value('id');
         $this->kasir = User::create([
@@ -48,7 +54,7 @@ class T0202BrandCategoryUomTest extends TestCase
             'email' => null,
             'password' => bcrypt('Password1'),
             'role_id' => $kasirRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
 
@@ -59,7 +65,7 @@ class T0202BrandCategoryUomTest extends TestCase
             'email' => null,
             'password' => bcrypt('Password1'),
             'role_id' => $adminRoleId,
-            'branch_id' => 1,
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
     }
@@ -71,6 +77,7 @@ class T0202BrandCategoryUomTest extends TestCase
     {
         $this->actingAs($this->superAdmin)
             ->post(route('admin.brands.store'), [
+                'tenant_id' => $this->tenantId,
                 'name' => 'Merk Baru Test',
                 'is_active' => 1,
             ])
@@ -87,12 +94,24 @@ class T0202BrandCategoryUomTest extends TestCase
     }
 
     /** @test */
+    public function super_admin_must_choose_tenant_when_creating_a_brand(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->post(route('admin.brands.store'), [
+                'name' => 'Merk Tanpa Tenant',
+                'is_active' => 1,
+            ])
+            ->assertSessionHasErrors('tenant_id');
+    }
+
+    /** @test */
     public function duplicate_brand_name_is_rejected(): void
     {
-        Brand::create(['name' => 'Merk Duplikat', 'is_active' => true]);
+        Brand::create(['tenant_id' => $this->tenantId, 'name' => 'Merk Duplikat', 'is_active' => true]);
 
         $this->actingAs($this->superAdmin)
             ->post(route('admin.brands.store'), [
+                'tenant_id' => $this->tenantId,
                 'name' => 'Merk Duplikat',
                 'is_active' => 1,
             ])
@@ -121,7 +140,7 @@ class T0202BrandCategoryUomTest extends TestCase
     /** @test */
     public function super_admin_can_update_a_brand(): void
     {
-        $brand = Brand::create(['name' => 'Merk Lama', 'is_active' => true]);
+        $brand = Brand::create(['tenant_id' => $this->tenantId, 'name' => 'Merk Lama', 'is_active' => true]);
 
         $this->actingAs($this->superAdmin)
             ->put(route('admin.brands.update', $brand), [
@@ -139,7 +158,7 @@ class T0202BrandCategoryUomTest extends TestCase
     /** @test */
     public function super_admin_can_deactivate_a_brand(): void
     {
-        $brand = Brand::create(['name' => 'Merk Aktif', 'is_active' => true]);
+        $brand = Brand::create(['tenant_id' => $this->tenantId, 'name' => 'Merk Aktif', 'is_active' => true]);
 
         $this->actingAs($this->superAdmin)
             ->patch(route('admin.brands.deactivate', $brand))
@@ -160,7 +179,7 @@ class T0202BrandCategoryUomTest extends TestCase
     /** @test */
     public function kasir_cannot_deactivate_a_brand(): void
     {
-        $brand = Brand::create(['name' => 'Merk Aktif 2', 'is_active' => true]);
+        $brand = Brand::create(['tenant_id' => $this->tenantId, 'name' => 'Merk Aktif 2', 'is_active' => true]);
 
         $this->actingAs($this->kasir)
             ->patch(route('admin.brands.deactivate', $brand))
@@ -174,6 +193,7 @@ class T0202BrandCategoryUomTest extends TestCase
     {
         $this->actingAs($this->superAdmin)
             ->post(route('admin.categories.store'), [
+                'tenant_id' => $this->tenantId,
                 'name' => 'Kategori Test',
                 'code' => 'KAT_TEST',
                 'is_active' => 1,
@@ -189,10 +209,11 @@ class T0202BrandCategoryUomTest extends TestCase
     /** @test */
     public function duplicate_category_code_is_rejected(): void
     {
-        Category::create(['name' => 'Kategori Satu', 'code' => 'DUPKAT', 'is_active' => true]);
+        Category::create(['tenant_id' => $this->tenantId, 'name' => 'Kategori Satu', 'code' => 'DUPKAT', 'is_active' => true]);
 
         $this->actingAs($this->superAdmin)
             ->post(route('admin.categories.store'), [
+                'tenant_id' => $this->tenantId,
                 'name' => 'Kategori Dua',
                 'code' => 'DUPKAT',
                 'is_active' => 1,
@@ -203,10 +224,11 @@ class T0202BrandCategoryUomTest extends TestCase
     /** @test */
     public function category_can_have_a_parent(): void
     {
-        $parent = Category::create(['name' => 'Induk', 'code' => 'INDUK', 'is_active' => true]);
+        $parent = Category::create(['tenant_id' => $this->tenantId, 'name' => 'Induk', 'code' => 'INDUK', 'is_active' => true]);
 
         $this->actingAs($this->superAdmin)
             ->post(route('admin.categories.store'), [
+                'tenant_id' => $this->tenantId,
                 'name' => 'Sub Kategori',
                 'code' => 'SUB_KAT',
                 'parent_id' => $parent->id,
@@ -243,7 +265,7 @@ class T0202BrandCategoryUomTest extends TestCase
     /** @test */
     public function super_admin_can_deactivate_a_category(): void
     {
-        $category = Category::create(['name' => 'Kategori Aktif', 'code' => 'KATAKTIF', 'is_active' => true]);
+        $category = Category::create(['tenant_id' => $this->tenantId, 'name' => 'Kategori Aktif', 'code' => 'KATAKTIF', 'is_active' => true]);
 
         $this->actingAs($this->superAdmin)
             ->patch(route('admin.categories.deactivate', $category))
@@ -262,6 +284,7 @@ class T0202BrandCategoryUomTest extends TestCase
     {
         $this->actingAs($this->superAdmin)
             ->post(route('admin.uoms.store'), [
+                'tenant_id' => $this->tenantId,
                 'code' => 'LUSIN',
                 'name' => 'Lusin',
             ])
@@ -279,6 +302,7 @@ class T0202BrandCategoryUomTest extends TestCase
         // PCS already seeded by UomSeeder
         $this->actingAs($this->superAdmin)
             ->post(route('admin.uoms.store'), [
+                'tenant_id' => $this->tenantId,
                 'code' => 'PCS',
                 'name' => 'Piece Duplikat',
             ])
@@ -307,7 +331,7 @@ class T0202BrandCategoryUomTest extends TestCase
     /** @test */
     public function super_admin_can_update_a_uom(): void
     {
-        $uom = Uom::create(['code' => 'TMPUOM', 'name' => 'Nama Lama']);
+        $uom = Uom::create(['tenant_id' => $this->tenantId, 'code' => 'TMPUOM', 'name' => 'Nama Lama']);
 
         $this->actingAs($this->superAdmin)
             ->put(route('admin.uoms.update', $uom), [
@@ -325,7 +349,7 @@ class T0202BrandCategoryUomTest extends TestCase
     /** @test */
     public function super_admin_can_deactivate_a_uom(): void
     {
-        $uom = Uom::create(['code' => 'DEACTUOM', 'name' => 'UoM Aktif', 'is_active' => true]);
+        $uom = Uom::create(['tenant_id' => $this->tenantId, 'code' => 'DEACTUOM', 'name' => 'UoM Aktif', 'is_active' => true]);
 
         $this->actingAs($this->superAdmin)
             ->patch(route('admin.uoms.deactivate', $uom))
@@ -346,7 +370,7 @@ class T0202BrandCategoryUomTest extends TestCase
     /** @test */
     public function kasir_cannot_deactivate_a_uom(): void
     {
-        $uom = Uom::create(['code' => 'KASUOM', 'name' => 'UoM Kasir Test', 'is_active' => true]);
+        $uom = Uom::create(['tenant_id' => $this->tenantId, 'code' => 'KASUOM', 'name' => 'UoM Kasir Test', 'is_active' => true]);
 
         $this->actingAs($this->kasir)
             ->patch(route('admin.uoms.deactivate', $uom))

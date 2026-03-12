@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Tenant;
 use App\Models\Uom;
 use Illuminate\Database\Seeder;
 
@@ -21,8 +22,13 @@ class UomSeeder extends Seeder
 
     public function run(): void
     {
+        $tenantId = Tenant::query()->firstOrFail()->id;
+
         foreach ($this->uoms as $uom) {
-            Uom::updateOrCreate(['code' => $uom['code']], ['name' => $uom['name']]);
+            Uom::updateOrCreate(
+                ['tenant_id' => $tenantId, 'code' => $uom['code']],
+                ['tenant_id' => $tenantId, 'name' => $uom['name']]
+            );
         }
     }
 }

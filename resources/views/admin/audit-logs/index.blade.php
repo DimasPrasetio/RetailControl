@@ -43,6 +43,8 @@
                         'App\Models\Category' => 'Kategori',
                         'App\Models\Brand' => 'Brand',
                         'App\Models\Uom' => 'Satuan (UOM)',
+                        'App\Models\Branch' => 'Cabang',
+                        'App\Models\Warehouse' => 'Gudang',
                     ];
                 @endphp
                 @if(isset($auditableTypes))

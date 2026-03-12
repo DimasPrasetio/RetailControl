@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\RoleEnum;
 use App\Traits\Auditable;
+use App\Traits\TenantScoped;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -12,7 +13,7 @@ use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, SoftDeletes, Auditable;
+    use HasFactory, Notifiable, SoftDeletes, Auditable, TenantScoped;
 
     protected $fillable = [
         'name',
@@ -20,6 +21,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role_id',
+        'tenant_id',
         'branch_id',
         'is_active',
     ];
@@ -45,6 +47,11 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class);
     }
 
+    public function tenant(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::class);
+    }
+
     /**
      * Branch akan tersedia setelah Module 02.
      * Didefinisikan di sini agar tidak perlu modifikasi User model nanti.
@@ -59,6 +66,11 @@ class User extends Authenticatable
     public function isSuperAdmin(): bool
     {
         return $this->role->name === RoleEnum::SuperAdmin;
+    }
+
+    public function isPlatformAdmin(): bool
+    {
+        return $this->isSuperAdmin();
     }
 
     public function isOwner(): bool
@@ -97,8 +109,45 @@ class User extends Authenticatable
         return $this->isGlobal() ? null : $this->branch_id;
     }
 
+    public function getAccessibleTenantId(): ?int
+    {
+        return $this->isPlatformAdmin() ? null : $this->tenant_id;
+    }
+
+    public function canAccessTenant(?int $tenantId): bool
+    {
+        if ($tenantId === null) {
+            return $this->isPlatformAdmin();
+        }
+
+        return $this->isPlatformAdmin() || $this->tenant_id === $tenantId;
+    }
+
     public function canAccessBranch(int $branchId): bool
     {
+        if ($this->isPlatformAdmin()) {
+            return true;
+        }
+
+        $branch = Branch::query()->select(['id', 'tenant_id'])->find($branchId);
+        if (! $branch || ! $this->canAccessTenant($branch->tenant_id)) {
+            return false;
+        }
+
         return $this->isGlobal() || $this->branch_id === $branchId;
+    }
+
+    public function allowsMissingTenantOnCreate(): bool
+    {
+        if (empty($this->role_id) || ! empty($this->tenant_id)) {
+            return false;
+        }
+
+        $role = Role::query()->find($this->role_id);
+        if (! $role) {
+            return false;
+        }
+
+        return $role->name === RoleEnum::SuperAdmin;
     }
 }

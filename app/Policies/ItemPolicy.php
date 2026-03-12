@@ -14,7 +14,8 @@ class ItemPolicy
 
     public function view(User $user, Item $item): bool
     {
-        return $user->hasPermission('items.view');
+        return $user->hasPermission('items.view')
+            && $user->canAccessTenant($item->tenant_id);
     }
 
     public function create(User $user): bool
@@ -24,16 +25,24 @@ class ItemPolicy
 
     public function update(User $user, Item $item): bool
     {
-        return $user->hasPermission('items.update');
+        return $user->hasPermission('items.update')
+            && $user->canAccessTenant($item->tenant_id);
     }
 
     public function deactivate(User $user, Item $item): bool
     {
-        return $user->hasPermission('items.deactivate');
+        return $user->hasPermission('items.deactivate')
+            && $user->canAccessTenant($item->tenant_id);
     }
 
     public function import(User $user): bool
     {
         return $user->hasPermission('items.import');
+    }
+
+    public function manageBarcodes(User $user, Item $item): bool
+    {
+        return $user->hasPermission('items.manage_barcodes')
+            && $user->canAccessTenant($item->tenant_id);
     }
 }

@@ -2,7 +2,11 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\Branch;
+use App\Models\Role;
+use App\Models\Tenant;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class StoreUserRequest extends FormRequest
@@ -14,17 +18,25 @@ class StoreUserRequest extends FormRequest
 
     public function rules(): array
     {
+        $tenantId = $this->integer('tenant_id') ?: Branch::whereKey($this->integer('branch_id'))->value('tenant_id');
+
         return [
-            'name'      => ['required', 'string', 'max:100'],
-            'username'  => [
+            'name' => ['required', 'string', 'max:100'],
+            'username' => [
                 'required', 'string', 'max:50', 'min:3',
                 'regex:/^[a-z0-9_]+$/',
-                'unique:users,username',
+                Rule::unique('users', 'username')->where(fn ($query) => $query->where('tenant_id', $tenantId)),
             ],
-            'email'     => ['nullable', 'email', 'max:150', 'unique:users,email'],
-            'password'  => ['required', 'confirmed', Password::min(8)->letters()->numbers()],
-            'role_id'   => ['required', 'exists:roles,id'],
-            'branch_id' => ['nullable', 'integer'],
+            'email' => [
+                'nullable',
+                'email',
+                'max:150',
+                Rule::unique('users', 'email')->where(fn ($query) => $query->where('tenant_id', $tenantId)),
+            ],
+            'password' => ['required', 'confirmed', Password::min(8)->letters()->numbers()],
+            'role_id' => ['required', 'exists:roles,id'],
+            'tenant_id' => ['nullable', 'integer', 'exists:tenants,id'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
             'is_active' => ['boolean'],
         ];
     }
@@ -39,16 +51,23 @@ class StoreUserRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'role_id'   => 'role',
+            'role_id' => 'role',
+            'tenant_id' => 'tenant',
             'branch_id' => 'cabang',
         ];
     }
 
-    /**
-     * Validasi tambahan setelah rules dasar lolos:
-     * - Role yang membutuhkan cabang harus ada branch_id
-     * - branch_id tidak boleh diisi jika role adalah global (super_admin/owner)
-     */
+    protected function prepareForValidation(): void
+    {
+        $branchId = $this->integer('branch_id');
+        if ($branchId && ! $this->filled('tenant_id')) {
+            $tenantId = Branch::whereKey($branchId)->value('tenant_id');
+            if ($tenantId) {
+                $this->merge(['tenant_id' => $tenantId]);
+            }
+        }
+    }
+
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
@@ -57,19 +76,61 @@ class StoreUserRequest extends FormRequest
                 return;
             }
 
-            $role = \App\Models\Role::find($roleId);
+            $role = Role::find($roleId);
             if (! $role) {
                 return;
             }
 
             $roleEnum = $role->name;
+            $tenantId = $this->integer('tenant_id');
+            $branchId = $this->integer('branch_id');
 
-            if ($roleEnum->requiresBranch() && ! $this->input('branch_id')) {
+            if ($roleEnum === \App\Enums\RoleEnum::SuperAdmin && ($tenantId || $branchId)) {
+                $validator->errors()->add('tenant_id', 'Role Super Admin tidak terikat tenant atau cabang.');
+            }
+
+            if ($roleEnum !== \App\Enums\RoleEnum::SuperAdmin && ! $tenantId) {
+                $validator->errors()->add('tenant_id', "Role {$roleEnum->label()} wajib memilih tenant.");
+            }
+
+            if ($roleEnum->requiresBranch() && ! $branchId) {
                 $validator->errors()->add('branch_id', "Role {$roleEnum->label()} wajib memilih cabang.");
             }
 
-            if ($roleEnum->isGlobal() && $this->input('branch_id')) {
+            if ($roleEnum->isGlobal() && $roleEnum !== \App\Enums\RoleEnum::SuperAdmin && $branchId) {
                 $validator->errors()->add('branch_id', "Role {$roleEnum->label()} tidak perlu memilih cabang.");
+            }
+
+            if ($tenantId) {
+                $tenant = Tenant::find($tenantId);
+                if ($tenant && ! $tenant->is_active) {
+                    $validator->errors()->add('tenant_id', 'Tenant yang dipilih tidak aktif.');
+                }
+
+                if (! $this->user()->isPlatformAdmin() && ! $this->user()->canAccessTenant($tenantId)) {
+                    $validator->errors()->add('tenant_id', 'Anda hanya dapat memilih tenant Anda sendiri.');
+                }
+            }
+
+            if (! $branchId) {
+                return;
+            }
+
+            $branch = Branch::find($branchId);
+            if (! $branch) {
+                return;
+            }
+
+            if (! $branch->is_active) {
+                $validator->errors()->add('branch_id', 'Cabang yang dipilih tidak aktif.');
+            }
+
+            if ($tenantId && $branch->tenant_id !== $tenantId) {
+                $validator->errors()->add('branch_id', 'Cabang yang dipilih tidak berada di tenant yang sama.');
+            }
+
+            if (! $this->user()->isGlobal() && ! $this->user()->canAccessBranch($branchId)) {
+                $validator->errors()->add('branch_id', 'Anda hanya dapat memilih cabang Anda sendiri.');
             }
         });
     }

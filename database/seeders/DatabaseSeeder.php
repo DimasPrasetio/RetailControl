@@ -10,20 +10,26 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
-                // Module 01 — Auth & RBAC
+            TenantSeeder::class,
+
+            // Module 01 - Auth & RBAC
             RoleSeeder::class,
             PermissionSeeder::class,
             RolePermissionSeeder::class,
+
+            // Module 03 - Branch & Warehouse
+            BranchSeeder::class,
             SuperAdminSeeder::class,
-                // Module 02 — Master Data
+
+            // Module 02 - Master Data
             UomSeeder::class,
             CategorySeeder::class,
             BrandSeeder::class,
             AttributeDefinitionSeeder::class,
         ]);
 
-        // Bersihkan audit log yang tercipta otomatis saat seeding.
-        // Hindari TRUNCATE agar transaksi test MySQL tetap terisolasi.
-        DB::table('audit_logs')->delete();
+        if (app()->runningUnitTests()) {
+            DB::table('audit_logs')->delete();
+        }
     }
 }

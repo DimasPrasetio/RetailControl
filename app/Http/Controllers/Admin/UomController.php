@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\InteractsWithTenantContext;
 use App\Models\Uom;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -12,32 +13,49 @@ use Illuminate\View\View;
 
 class UomController extends Controller
 {
+    use InteractsWithTenantContext;
+
     public function index(): View
     {
         Gate::authorize('viewAny', Uom::class);
 
-        $uoms = Uom::orderBy('code')->paginate(10);
+        $uoms = Uom::query()
+            ->forTenant(request()->user()->getAccessibleTenantId())
+            ->orderBy('code')
+            ->paginate(10);
 
         return view('admin.uoms.index', compact('uoms'));
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
         Gate::authorize('create', Uom::class);
 
-        return view('admin.uoms.create');
+        $selectedTenantId = $this->selectedTenantId($request);
+
+        return view('admin.uoms.create', [
+            'tenants' => $this->availableTenants($request->user(), $selectedTenantId),
+            'selectedTenantId' => $selectedTenantId,
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         Gate::authorize('create', Uom::class);
 
+        $tenantId = $this->resolveTenantId($request);
         $data = $request->validate([
-            'code' => ['required', 'string', 'max:20', 'unique:uoms,code'],
+            'code' => [
+                'required',
+                'string',
+                'max:20',
+                Rule::unique('uoms', 'code')->where(fn ($query) => $query->where('tenant_id', $tenantId)),
+            ],
             'name' => ['required', 'string', 'max:50'],
         ]);
 
         $data['code'] = strtoupper($data['code']);
+        $data['tenant_id'] = $tenantId;
         Uom::create($data);
 
         return redirect()->route('admin.uoms.index')
@@ -56,7 +74,14 @@ class UomController extends Controller
         Gate::authorize('update', $uom);
 
         $data = $request->validate([
-            'code' => ['required', 'string', 'max:20', Rule::unique('uoms', 'code')->ignore($uom->id)],
+            'code' => [
+                'required',
+                'string',
+                'max:20',
+                Rule::unique('uoms', 'code')
+                    ->ignore($uom->id)
+                    ->where(fn ($query) => $query->where('tenant_id', $uom->tenant_id)),
+            ],
             'name' => ['required', 'string', 'max:50'],
         ]);
 

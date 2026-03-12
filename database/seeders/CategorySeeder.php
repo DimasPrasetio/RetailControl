@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Category;
+use App\Models\Tenant;
 use Illuminate\Database\Seeder;
 
 class CategorySeeder extends Seeder
@@ -19,10 +20,12 @@ class CategorySeeder extends Seeder
 
     public function run(): void
     {
+        $tenantId = Tenant::query()->firstOrFail()->id;
+
         foreach ($this->categories as $cat) {
             Category::updateOrCreate(
-                ['code' => $cat['code']],
-                ['name' => $cat['name'], 'is_active' => true]
+                ['tenant_id' => $tenantId, 'code' => $cat['code']],
+                ['tenant_id' => $tenantId, 'name' => $cat['name'], 'is_active' => true]
             );
         }
     }

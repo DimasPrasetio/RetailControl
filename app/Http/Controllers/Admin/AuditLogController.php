@@ -4,6 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\Branch;
+use App\Models\Brand;
+use App\Models\Category;
+use App\Models\Item;
+use App\Models\Role;
+use App\Models\Uom;
+use App\Models\User;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -18,9 +26,9 @@ class AuditLogController extends Controller
         );
 
         $query = AuditLog::with('user')
+            ->when(! $request->user()->isPlatformAdmin(), fn ($builder) => $builder->where('tenant_id', $request->user()->tenant_id))
             ->orderByDesc('created_at');
 
-        // Filter opsional
         if ($request->filled('auditable_type')) {
             $query->where('auditable_type', $request->input('auditable_type'));
         }
@@ -44,12 +52,14 @@ class AuditLogController extends Controller
         $logs = $query->paginate(10)->withQueryString();
 
         $auditableTypes = [
-            \App\Models\User::class,
-            \App\Models\Role::class,
-            \App\Models\Item::class,
-            \App\Models\Category::class,
-            \App\Models\Brand::class,
-            \App\Models\Uom::class,
+            User::class,
+            Role::class,
+            Item::class,
+            Category::class,
+            Brand::class,
+            Uom::class,
+            Branch::class,
+            Warehouse::class,
         ];
 
         return view('admin.audit-logs.index', compact('logs', 'auditableTypes'));

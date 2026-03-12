@@ -38,6 +38,20 @@
             <form method="POST" action="{{ route('admin.items.import') }}" enctype="multipart/form-data">
                 @csrf
 
+                @if(auth()->user()->isPlatformAdmin())
+                    <div class="mb-6">
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Tenant <span class="text-red-500">*</span></label>
+                        <select name="tenant_id"
+                            class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100 @error('tenant_id') border-red-400 @enderror">
+                            <option value="">- Pilih tenant tujuan import -</option>
+                            @foreach($tenants as $tenant)
+                                <option value="{{ $tenant->id }}" {{ old('tenant_id', $selectedTenantId) == $tenant->id ? 'selected' : '' }}>{{ $tenant->name }}</option>
+                            @endforeach
+                        </select>
+                        @error('tenant_id')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                    </div>
+                @endif
+
                 <div class="mb-6">
                     <label class="mb-1.5 block text-sm font-medium text-gray-700">File Excel <span
                             class="text-red-500">*</span></label>

@@ -8,9 +8,6 @@ use App\Models\Item;
 use App\Models\PriceList;
 use App\Models\PriceListItem;
 use App\Models\Uom;
-use App\Services\Audit\AuditLogger;
-use App\Enums\AuditActionEnum;
-use Illuminate\Support\Facades\DB;
 use Shuchkin\SimpleXLSX;
 
 /**
@@ -24,6 +21,7 @@ use Shuchkin\SimpleXLSX;
  */
 class ExcelImportService
 {
+    private int $tenantId;
     private array $errors = [];
     private int $created = 0;
     private int $skipped = 0;
@@ -53,8 +51,9 @@ class ExcelImportService
 
     // ─── Public API ─────────────────────────────────────────────────────────
 
-    public function import(string $filePath): array
+    public function import(string $filePath, int $tenantId): array
     {
+        $this->tenantId = $tenantId;
         $this->errors = [];
         $this->created = 0;
         $this->skipped = 0;
@@ -556,8 +555,8 @@ class ExcelImportService
         $baseSku = strtoupper($skuCode);
         $sku = $baseSku;
         $attempt = 1;
-        while ($attempt <= 5 && Item::where('sku_code', $sku)->exists()) {
-            $existing = Item::where('sku_code', $sku)->first();
+        while ($attempt <= 5 && Item::where('tenant_id', $this->tenantId())->where('sku_code', $sku)->exists()) {
+            $existing = Item::where('tenant_id', $this->tenantId())->where('sku_code', $sku)->first();
             if ($existing->name === $name) {
                 $this->skipped++;
                 return $existing;
@@ -567,13 +566,17 @@ class ExcelImportService
 
         try {
             $item = Item::create([
+                'tenant_id' => $this->tenantId(),
                 'sku_code' => $sku,
                 'name' => $name,
                 'brand_id' => $brand->id,
                 'category_id' => $category->id,
                 'base_uom_id' => $uom->id,
+                'selling_uom_id' => $uom->id,
                 'pack_qty' => 1,
                 'tax_included' => true,
+                'is_stockable' => true,
+                'selling_price' => $price,
                 'is_active' => true,
                 'attributes_json' => $attrs ?: null,
                 'raw_source_json' => [
@@ -600,7 +603,7 @@ class ExcelImportService
     {
         $pl = $this->getPriceList($listName);
         PriceListItem::updateOrCreate(
-            ['price_list_id' => $pl->id, 'item_id' => $item->id],
+            ['price_list_id' => $pl->id, 'item_id' => $item->id, 'price_uom_id' => $item->selling_uom_id ?: $item->base_uom_id],
             ['sell_price' => $price]
         );
     }
@@ -721,7 +724,10 @@ class ExcelImportService
     {
         $key = strtolower($name);
         if (!isset($this->brandCache[$key])) {
-            $this->brandCache[$key] = Brand::firstOrCreate(['name' => trim($name)], ['is_active' => true]);
+            $this->brandCache[$key] = Brand::firstOrCreate(
+                ['tenant_id' => $this->tenantId(), 'name' => trim($name)],
+                ['tenant_id' => $this->tenantId(), 'is_active' => true]
+            );
         }
         return $this->brandCache[$key];
     }
@@ -730,8 +736,8 @@ class ExcelImportService
     {
         if (!isset($this->categoryCache[$code])) {
             $this->categoryCache[$code] = Category::firstOrCreate(
-                ['code' => $code],
-                ['name' => ucwords(strtolower(str_replace('_', ' ', $code))), 'is_active' => true]
+                ['tenant_id' => $this->tenantId(), 'code' => $code],
+                ['tenant_id' => $this->tenantId(), 'name' => ucwords(strtolower(str_replace('_', ' ', $code))), 'is_active' => true]
             );
         }
         return $this->categoryCache[$code];
@@ -740,7 +746,7 @@ class ExcelImportService
     private function findUom(string $code): Uom
     {
         if (!isset($this->uomCache[$code])) {
-            $this->uomCache[$code] = Uom::where('code', $code)->firstOrFail();
+            $this->uomCache[$code] = Uom::where('tenant_id', $this->tenantId())->where('code', $code)->firstOrFail();
         }
         return $this->uomCache[$code];
     }
@@ -749,11 +755,16 @@ class ExcelImportService
     {
         if (!isset($this->priceListCache[$name])) {
             $this->priceListCache[$name] = PriceList::firstOrCreate(
-                ['name' => $name],
-                ['scope' => 'GLOBAL', 'effective_from' => now()->toDateString(), 'is_active' => true]
+                ['tenant_id' => $this->tenantId(), 'name' => $name],
+                ['tenant_id' => $this->tenantId(), 'scope' => 'GLOBAL', 'effective_from' => now()->toDateString(), 'is_active' => true]
             );
         }
         return $this->priceListCache[$name];
+    }
+
+    private function tenantId(): int
+    {
+        return $this->tenantId;
     }
 
     private function result(array $extraErrors = []): array

@@ -3,6 +3,8 @@
 namespace Database\Seeders;
 
 use App\Models\AttributeDefinition;
+use App\Models\Category;
+use App\Models\Tenant;
 use Illuminate\Database\Seeder;
 
 class AttributeDefinitionSeeder extends Seeder
@@ -42,11 +44,14 @@ class AttributeDefinitionSeeder extends Seeder
 
     public function run(): void
     {
+        $tenantId = Tenant::query()->firstOrFail()->id;
+
         foreach ($this->definitions as $def) {
             $options = $def['options'] ?? null;
             AttributeDefinition::updateOrCreate(
-                ['key' => $def['key']],
+                ['tenant_id' => $tenantId, 'key' => $def['key']],
                 [
+                    'tenant_id'    => $tenantId,
                     'label'       => $def['label'],
                     'data_type'   => $def['data_type'],
                     'unit'        => $def['unit'],
@@ -54,6 +59,37 @@ class AttributeDefinitionSeeder extends Seeder
                     'is_required' => false,
                 ]
             );
+        }
+
+        $this->syncCategoryAttributeSets($tenantId);
+    }
+
+    private function syncCategoryAttributeSets(int $tenantId): void
+    {
+        $map = [
+            'PIPA_PVC' => ['diameter_mm', 'diameter_inch', 'od_mm', 'panjang_m', 'spec', 'model'],
+            'FITTING_PVC' => ['jenis', 'class', 'diameter_mm', 'diameter_inch', 'isi_per_box'],
+            'POMPA' => ['type_text', 'jenis', 'outlet', 'power_watt'],
+            'KABEL' => ['cable_size', 'cable_size_unit', 'cable_type'],
+            'CHEM' => ['pack_size', 'pack_size_unit'],
+            'MORTAR' => ['jenis', 'weight_kg'],
+            'LAINNYA' => ['jenis'],
+        ];
+
+        foreach ($map as $categoryCode => $keys) {
+            $category = Category::where('tenant_id', $tenantId)
+                ->where('code', $categoryCode)
+                ->first();
+
+            if (! $category) {
+                continue;
+            }
+
+            $attributeIds = AttributeDefinition::where('tenant_id', $tenantId)
+                ->whereIn('key', $keys)
+                ->pluck('id');
+
+            $category->attributeDefinitions()->sync($attributeIds);
         }
     }
 }

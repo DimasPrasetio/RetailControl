@@ -19,8 +19,9 @@ class SuperAdminSeeder extends Seeder
             [
                 'name' => 'Super Admin',
                 'email' => 'superadmin@yopmail.com',
-                'password' => Hash::make('SuperAdmin@123'),
+                'password' => Hash::make('superadmin'),
                 'role_id' => $role->id,
+                'tenant_id' => null,
                 'branch_id' => null,
                 'is_active' => true,
             ],
