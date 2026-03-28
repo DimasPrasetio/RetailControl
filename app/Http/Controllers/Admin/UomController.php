@@ -49,7 +49,7 @@ class UomController extends Controller
                 'required',
                 'string',
                 'max:20',
-                Rule::unique('uoms', 'code')->where(fn ($query) => $query->where('tenant_id', $tenantId)),
+                Rule::unique('uoms', 'code')->where(fn ($query) => $query->where('tenant_id', $tenantId))->withoutTrashed(),
             ],
             'name' => ['required', 'string', 'max:50'],
         ]);
@@ -80,7 +80,8 @@ class UomController extends Controller
                 'max:20',
                 Rule::unique('uoms', 'code')
                     ->ignore($uom->id)
-                    ->where(fn ($query) => $query->where('tenant_id', $uom->tenant_id)),
+                    ->where(fn ($query) => $query->where('tenant_id', $uom->tenant_id))
+                    ->withoutTrashed(),
             ],
             'name' => ['required', 'string', 'max:50'],
         ]);
@@ -100,5 +101,15 @@ class UomController extends Controller
 
         return redirect()->route('admin.uoms.index')
             ->with('success', 'Satuan berhasil dinonaktifkan.');
+    }
+
+    public function destroy(Uom $uom): RedirectResponse
+    {
+        Gate::authorize('delete', $uom);
+
+        $uom->delete();
+
+        return redirect()->route('admin.uoms.index')
+            ->with('success', 'Satuan berhasil dihapus.');
     }
 }

@@ -34,4 +34,10 @@ class BrandPolicy
         return $user->hasPermission('brands.deactivate')
             && $user->canAccessTenant($brand->tenant_id);
     }
+
+    public function delete(User $user, Brand $brand): bool
+    {
+        return $user->hasPermission('brands.delete')
+            && $user->canAccessTenant($brand->tenant_id);
+    }
 }

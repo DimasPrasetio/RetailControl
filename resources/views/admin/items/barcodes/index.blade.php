@@ -116,7 +116,7 @@
                     @error('barcode')
                         <p class="mt-1.5 text-xs text-red-600">{{ $message }}</p>
                     @enderror
-                    <p class="mt-1 text-xs text-gray-400">Barcode harus unik di seluruh produk dalam tenant ini.</p>
+                    <p class="mt-1 text-xs text-gray-400">Barcode harus unik di seluruh produk dalam perusahaan ini.</p>
                 </div>
 
                 <div>

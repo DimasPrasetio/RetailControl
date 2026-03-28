@@ -8,10 +8,11 @@ use App\Traits\TenantScoped;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class StockLocation extends Model
 {
-    use Auditable, BranchScoped, TenantScoped;
+    use Auditable, BranchScoped, SoftDeletes, TenantScoped;
 
     protected $fillable = [
         'tenant_id',
@@ -20,7 +21,8 @@ class StockLocation extends Model
         'parent_id',
         'code',
         'name',
-        'type',
+        'system_type',
+        'label',
         'metadata_json',
         'is_active',
     ];
@@ -57,6 +59,6 @@ class StockLocation extends Model
 
     public function isSystemLocation(): bool
     {
-        return in_array($this->type, ['BRANCH', 'WAREHOUSE'], true);
+        return $this->system_type !== null;
     }
 }

@@ -63,7 +63,7 @@
                 <div class="mb-4 grid grid-cols-3 gap-4">
                     <div>
                         <label class="mb-1.5 block text-sm font-medium text-gray-700">Satuan Dasar Stok <span class="text-red-500">*</span></label>
-                        <select name="base_uom_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 @error('base_uom_id') border-red-400 @enderror">
+                        <select name="base_uom_id" id="base_uom_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 @error('base_uom_id') border-red-400 @enderror">
                             @foreach($uoms as $uom)
                                 <option value="{{ $uom->id }}" {{ old('base_uom_id', $item->base_uom_id) == $uom->id ? 'selected' : '' }}>{{ $uom->code }}</option>
                             @endforeach
@@ -73,7 +73,7 @@
                     </div>
                     <div>
                         <label class="mb-1.5 block text-sm font-medium text-gray-700">Default Satuan Jual</label>
-                        <select name="selling_uom_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 @error('selling_uom_id') border-red-400 @enderror">
+                        <select name="selling_uom_id" id="selling_uom_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 @error('selling_uom_id') border-red-400 @enderror">
                             <option value="">- Ikuti satuan dasar stok -</option>
                             @foreach($uoms as $uom)
                                 <option value="{{ $uom->id }}" {{ old('selling_uom_id', $item->selling_uom_id ?: $item->base_uom_id) == $uom->id ? 'selected' : '' }}>{{ $uom->code }}</option>
@@ -83,7 +83,7 @@
                     </div>
                     <div>
                         <label class="mb-1.5 block text-sm font-medium text-gray-700">Default Satuan Beli</label>
-                        <select name="purchase_uom_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
+                        <select name="purchase_uom_id" id="purchase_uom_id" class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
                             <option value="">- Tidak diatur -</option>
                             @foreach($uoms as $uom)
                                 <option value="{{ $uom->id }}" {{ old('purchase_uom_id', $item->purchase_uom_id) == $uom->id ? 'selected' : '' }}>{{ $uom->code }}</option>
@@ -109,22 +109,25 @@
                 </div>
 
                 <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-600">Harga & Stok</h3>
-                <p class="mb-3 text-xs text-gray-500">Harga normal dan harga minimum mengikuti default satuan jual.</p>
+                <p class="mb-3 text-xs text-gray-500">Harga modal diinput per default satuan beli. Harga jual &amp; minimum per default satuan jual.</p>
 
                 <div class="mb-4 grid grid-cols-3 gap-4">
                     <div>
-                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Harga Modal</label>
-                        <input type="number" name="cost_price" value="{{ old('cost_price', $item->cost_price) }}" min="0" step="0.01"
+                        <label id="cost-price-label" for="cost_price" class="mb-1.5 block text-sm font-medium text-gray-700">Harga Modal</label>
+                        <input type="number" id="cost_price" name="cost_price"
+                            value="{{ old('cost_price', $item->cost_price !== null ? round((float) $item->cost_price * (float) $item->pack_qty, 2) : '') }}"
+                            min="0" step="0.01" oninput="updatePriceLabels()"
+                            class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
+                        <p id="cost-price-hint" class="mt-1 min-h-[1rem] text-xs text-blue-500"></p>
+                    </div>
+                    <div>
+                        <label id="selling-price-label" for="selling_price" class="mb-1.5 block text-sm font-medium text-gray-700">Harga Jual Normal</label>
+                        <input type="number" id="selling_price" name="selling_price" value="{{ old('selling_price', $item->selling_price) }}" min="0" step="0.01"
                             class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
                     </div>
                     <div>
-                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Harga Jual Normal</label>
-                        <input type="number" name="selling_price" value="{{ old('selling_price', $item->selling_price) }}" min="0" step="0.01"
-                            class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
-                    </div>
-                    <div>
-                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Harga Minimum</label>
-                        <input type="number" name="minimum_selling_price" value="{{ old('minimum_selling_price', $item->minimum_selling_price) }}" min="0" step="0.01"
+                        <label id="minimum-price-label" for="minimum_selling_price" class="mb-1.5 block text-sm font-medium text-gray-700">Harga Minimum</label>
+                        <input type="number" id="minimum_selling_price" name="minimum_selling_price" value="{{ old('minimum_selling_price', $item->minimum_selling_price) }}" min="0" step="0.01"
                             class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400">
                     </div>
                 </div>
@@ -284,7 +287,7 @@
         function renderUnitRow(row = {}, index = unitRowIndex++) {
             const container = document.getElementById('item-unit-rows');
             const wrapper = document.createElement('div');
-            wrapper.className = 'grid gap-3 rounded-xl border border-gray-200 bg-white p-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto_auto]';
+            wrapper.className = 'unit-row grid gap-3 rounded-xl border border-gray-200 bg-white p-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto_auto]';
 
             const selectedUomId = row.uom_id ?? '';
             const optionsHtml = ['<option value="">- Pilih satuan -</option>']
@@ -294,13 +297,14 @@
             wrapper.innerHTML = `
                 <div>
                     <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">Satuan</label>
-                    <select name="item_units[${index}][uom_id]" class="tom-select-init w-full rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400">
+                    <select name="item_units[${index}][uom_id]" onchange="updatePriceLabels()" class="tom-select-init w-full rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400">
                         ${optionsHtml}
                     </select>
                 </div>
                 <div>
                     <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">Konversi ke Dasar</label>
                     <input type="number" name="item_units[${index}][conversion_qty]" value="${row.conversion_qty ?? ''}" min="0.0001" step="0.0001"
+                        oninput="updatePriceLabels()"
                         class="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400">
                 </div>
                 <label class="flex items-center gap-2 self-end rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700">
@@ -311,17 +315,86 @@
                     <input type="checkbox" name="item_units[${index}][allow_purchase]" value="1" ${(row.allow_purchase ?? false) ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600">
                     Beli
                 </label>
-                <button type="button" onclick="this.closest('.rounded-xl').remove()"
+                <button type="button" onclick="this.closest('.unit-row').remove(); updatePriceLabels()"
                     class="self-end rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50">
                     Hapus
                 </button>
             `;
 
             container.appendChild(wrapper);
+
+            // Initialize CustomSelect on the new select (guards against double-init via _cs flag)
+            const newSelect = wrapper.querySelector('select[name*="[uom_id]"]');
+            if (newSelect && !newSelect._cs) {
+                new CustomSelect(newSelect);
+            }
         }
 
         function addUnitRow() {
             renderUnitRow();
+        }
+
+        function updatePriceLabels() {
+            const baseUomId = document.getElementById('base_uom_id')?.value ?? '';
+            const sellingUomId = document.getElementById('selling_uom_id')?.value ?? '';
+            const purchaseUomId = document.getElementById('purchase_uom_id')?.value ?? '';
+
+            // Build conversion map: uomId -> { code, conversion }
+            const convMap = {};
+            if (baseUomId) {
+                const baseCode = uomOptions.find(u => String(u.id) === baseUomId)?.code ?? '';
+                convMap[baseUomId] = { code: baseCode, conversion: 1 };
+            }
+            document.querySelectorAll('.unit-row').forEach(row => {
+                const sel = row.querySelector('select[name*="[uom_id]"]');
+                const inp = row.querySelector('input[name*="[conversion_qty]"]');
+                if (!sel?.value) return;
+                const code = uomOptions.find(u => String(u.id) === sel.value)?.code ?? '';
+                convMap[sel.value] = { code, conversion: parseFloat(inp?.value) || 1 };
+            });
+
+            const baseCode = convMap[baseUomId]?.code ?? '';
+
+            // Resolve purchase unit info (fallback to base if not set)
+            const purchaseInfo = convMap[purchaseUomId] ?? convMap[baseUomId] ?? { code: baseCode, conversion: 1 };
+
+            // Resolve selling unit info (fallback to base if not set)
+            const effectiveSellingId = sellingUomId || baseUomId;
+            const sellingInfo = convMap[effectiveSellingId] ?? { code: baseCode, conversion: 1 };
+
+            // Update Harga Modal label
+            const costLabel = document.getElementById('cost-price-label');
+            if (costLabel) {
+                costLabel.textContent = purchaseInfo.code ? `Harga Modal per ${purchaseInfo.code}` : 'Harga Modal';
+            }
+
+            // Update Harga Modal hint: show per-base equivalent when conversion > 1
+            const costHint = document.getElementById('cost-price-hint');
+            if (costHint) {
+                if (purchaseInfo.conversion > 1) {
+                    const val = parseFloat(document.getElementById('cost_price')?.value);
+                    if (!isNaN(val) && val > 0) {
+                        const perBase = val / purchaseInfo.conversion;
+                        costHint.textContent = `≈ Rp ${new Intl.NumberFormat('id-ID').format(Math.round(perBase))} / ${baseCode}`;
+                    } else {
+                        costHint.textContent = `Masukkan harga beli per ${purchaseInfo.code}. Sistem konversi ke per ${baseCode}.`;
+                    }
+                } else {
+                    costHint.textContent = '';
+                }
+            }
+
+            // Update Harga Jual Normal label
+            const sellLabel = document.getElementById('selling-price-label');
+            if (sellLabel) {
+                sellLabel.textContent = sellingInfo.code ? `Harga Jual Normal per ${sellingInfo.code}` : 'Harga Jual Normal';
+            }
+
+            // Update Harga Minimum label
+            const minLabel = document.getElementById('minimum-price-label');
+            if (minLabel) {
+                minLabel.textContent = sellingInfo.code ? `Harga Minimum per ${sellingInfo.code}` : 'Harga Minimum';
+            }
         }
 
         document.addEventListener('DOMContentLoaded', function () {
@@ -334,6 +407,12 @@
             if (unitRowsSeed.length) {
                 unitRowsSeed.forEach(row => renderUnitRow(row));
             }
+
+            ['base_uom_id', 'selling_uom_id', 'purchase_uom_id'].forEach(id => {
+                document.getElementById(id)?.addEventListener('change', updatePriceLabels);
+            });
+
+            updatePriceLabels();
         });
     </script>
 

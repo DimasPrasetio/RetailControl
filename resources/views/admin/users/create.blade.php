@@ -97,10 +97,10 @@
 
             @if(isset($tenants))
                 <div>
-                    <label for="tenant_id" class="mb-1.5 block text-sm font-medium text-gray-700">Tenant</label>
+                    <label for="tenant_id" class="mb-1.5 block text-sm font-medium text-gray-700">Perusahaan</label>
                     <select id="tenant_id" name="tenant_id"
                             class="tom-select-init block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 transition focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20 @error('tenant_id') border-red-400 bg-red-50 @enderror">
-                        <option value="">- Pilih tenant -</option>
+                        <option value="">- Pilih perusahaan -</option>
                         @foreach ($tenants as $tenant)
                             <option value="{{ $tenant->id }}" {{ old('tenant_id') == $tenant->id ? 'selected' : '' }}>
                                 {{ $tenant->name }}

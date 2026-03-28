@@ -18,39 +18,72 @@ class StockLocationController extends Controller
     {
         Gate::authorize('viewAny', StockLocation::class);
 
-        $query = StockLocation::query()
-            ->with(['branch', 'warehouse', 'parent'])
-            ->forTenant($request->user()->getAccessibleTenantId())
-            ->forBranch($request->user()->getAccessibleBranchId())
-            ->orderBy('name');
+        $isSearch         = $request->filled('q');
+        $selectedBranchId = $request->integer('branch_id') ?: null;
+        $selectedWarehouseId = $request->integer('warehouse_id') ?: null;
 
-        if ($request->filled('branch_id') && $request->user()->isGlobal()) {
-            $query->where('branch_id', $request->integer('branch_id'));
+        $base = StockLocation::query()
+            ->forTenant($request->user()->getAccessibleTenantId())
+            ->forBranch($request->user()->getAccessibleBranchId());
+
+        if ($selectedBranchId && $request->user()->isGlobal()) {
+            $base->where('branch_id', $selectedBranchId);
         }
 
-        if ($request->filled('warehouse_id')) {
-            $query->where('warehouse_id', $request->integer('warehouse_id'));
+        if ($selectedWarehouseId) {
+            $base->where('warehouse_id', $selectedWarehouseId);
         }
 
         if ($request->filled('active')) {
-            $query->where('is_active', $request->boolean('active'));
+            $base->where('is_active', $request->boolean('active'));
         }
 
-        if ($request->filled('q')) {
+        $branches         = $this->availableBranches($request->user(), $selectedBranchId);
+        $filterWarehouses = $this->availableWarehouses($request->user(), $selectedBranchId, $selectedWarehouseId);
+
+        if ($isSearch) {
             $q = $request->input('q');
-            $query->where(function ($inner) use ($q) {
-                $inner->where('name', 'like', "%{$q}%")
-                    ->orWhere('code', 'like', "%{$q}%");
-            });
+            $stockLocations = (clone $base)
+                ->with(['branch', 'warehouse', 'parent'])
+                ->where(fn($inner) => $inner
+                    ->where('name', 'like', "%{$q}%")
+                    ->orWhere('code', 'like', "%{$q}%"))
+                ->orderBy('name')
+                ->paginate(20)
+                ->withQueryString();
+
+            return view('admin.stock-locations.index', [
+                'treeMode'       => false,
+                'stockLocations' => $stockLocations,
+                'branches'       => $branches,
+                'warehouses'     => $filterWarehouses,
+            ]);
         }
 
-        $stockLocations = $query->paginate(10)->withQueryString();
-        $selectedBranchId = $request->integer('branch_id');
+        // Tree mode: load all at once (no N+1), build tree PHP-side
+        $allLocations = (clone $base)
+            ->with(['warehouse.branch'])
+            ->orderBy('parent_id')
+            ->orderBy('name')
+            ->get()
+            ->keyBy('id');
+
+        // Group root nodes (no parent) by warehouse
+        $rootsByWarehouse = $allLocations->whereNull('parent_id')->groupBy('warehouse_id');
+
+        $warehouseModels = Warehouse::with('branch')
+            ->whereIn('id', $rootsByWarehouse->keys()->filter()->all())
+            ->orderBy('name')
+            ->get()
+            ->keyBy('id');
 
         return view('admin.stock-locations.index', [
-            'stockLocations' => $stockLocations,
-            'branches' => $this->availableBranches($request->user(), $selectedBranchId),
-            'warehouses' => $this->availableWarehouses($request->user(), $selectedBranchId, $request->integer('warehouse_id')),
+            'treeMode'         => true,
+            'allLocations'     => $allLocations,
+            'rootsByWarehouse' => $rootsByWarehouse,
+            'warehouseModels'  => $warehouseModels,
+            'branches'         => $branches,
+            'warehouses'       => $filterWarehouses,
         ]);
     }
 
@@ -75,9 +108,9 @@ class StockLocationController extends Controller
         Gate::authorize('create', StockLocation::class);
 
         $branch = $this->resolveBranch($request, $request->integer('branch_id'));
-        $warehouse = $this->resolveWarehouse($request, $branch, $request->integer('warehouse_id'));
+        $warehouse = $this->resolveWarehouse($branch, $request->integer('warehouse_id'));
         $data = $this->validated($request, $branch->tenant_id);
-        $parent = $this->resolveParent($request, $branch->tenant_id, $warehouse->id, $request->integer('parent_id'));
+        $parent = $this->resolveParent($branch->tenant_id, $warehouse->id, $request->integer('parent_id'));
 
         $data['tenant_id'] = $branch->tenant_id;
         $data['branch_id'] = $branch->id;
@@ -115,9 +148,18 @@ class StockLocationController extends Controller
         abort_if($stockLocation->isSystemLocation(), 403, 'Lokasi sistem tidak dapat diubah manual.');
 
         $branch = $this->resolveBranch($request, $stockLocation->branch_id);
-        $warehouse = $this->resolveWarehouse($request, $branch, $stockLocation->warehouse_id);
+        $warehouse = $this->resolveWarehouse($branch, $stockLocation->warehouse_id);
         $data = $this->validated($request, $stockLocation->tenant_id, $stockLocation);
-        $parent = $this->resolveParent($request, $stockLocation->tenant_id, $warehouse->id, $request->integer('parent_id'), $stockLocation->id);
+        $parent = $this->resolveParent($stockLocation->tenant_id, $warehouse->id, $request->integer('parent_id'), $stockLocation->id);
+
+        // Guard against circular reference
+        if ($parent) {
+            $all = StockLocation::query()->forTenant($stockLocation->tenant_id)->where('warehouse_id', $warehouse->id)->get()->keyBy('id');
+            $descendantIds = $this->collectDescendantIds($all, $stockLocation->id);
+            if ($descendantIds->contains($parent->id) || $parent->id === $stockLocation->id) {
+                return back()->withErrors(['parent_id' => 'Parent tidak boleh merupakan turunan dari lokasi ini.'])->withInput();
+            }
+        }
 
         $data['tenant_id'] = $stockLocation->tenant_id;
         $data['branch_id'] = $branch->id;
@@ -140,12 +182,6 @@ class StockLocationController extends Controller
             return redirect()
                 ->route('admin.stock-locations.index')
                 ->with('error', 'Lokasi sistem tidak dapat dinonaktifkan.');
-        }
-
-        if ($stockLocation->children()->where('is_active', true)->exists()) {
-            return redirect()
-                ->route('admin.stock-locations.index')
-                ->with('error', 'Nonaktifkan lokasi turunan terlebih dahulu.');
         }
 
         $stockLocation->update(['is_active' => false]);
@@ -172,10 +208,34 @@ class StockLocationController extends Controller
             ->with('success', 'Lokasi stok berhasil diaktifkan kembali.');
     }
 
+    public function destroy(StockLocation $stockLocation): RedirectResponse
+    {
+        Gate::authorize('delete', $stockLocation);
+
+        if ($stockLocation->isSystemLocation()) {
+            return redirect()
+                ->route('admin.stock-locations.index')
+                ->with('error', 'Lokasi sistem tidak dapat dihapus.');
+        }
+
+        try {
+            $stockLocation->delete();
+        } catch (\RuntimeException $e) {
+            return redirect()
+                ->route('admin.stock-locations.index')
+                ->with('error', $e->getMessage());
+        }
+
+        return redirect()
+            ->route('admin.stock-locations.index')
+            ->with('success', 'Lokasi stok berhasil dihapus.');
+    }
+
     private function validated(Request $request, int $tenantId, ?StockLocation $stockLocation = null): array
     {
         $uniqueCode = Rule::unique('stock_locations', 'code')
-            ->where(fn ($query) => $query->where('tenant_id', $tenantId));
+            ->where(fn ($query) => $query->where('tenant_id', $tenantId))
+            ->withoutTrashed();
 
         if ($stockLocation) {
             $uniqueCode->ignore($stockLocation->id);
@@ -184,7 +244,7 @@ class StockLocationController extends Controller
         return $request->validate([
             'code' => ['required', 'string', 'max:40', 'regex:/^[A-Z0-9_-]+$/i', $uniqueCode],
             'name' => ['required', 'string', 'max:100'],
-            'type' => ['required', Rule::in(['AREA', 'SUB_AREA'])],
+            'label' => ['nullable', 'string', 'max:50'],
             'parent_id' => ['nullable', 'integer'],
         ]);
     }
@@ -208,7 +268,7 @@ class StockLocationController extends Controller
         return $branch;
     }
 
-    private function resolveWarehouse(Request $request, Branch $branch, ?int $warehouseId): Warehouse
+    private function resolveWarehouse(Branch $branch, ?int $warehouseId): Warehouse
     {
         $warehouse = Warehouse::query()
             ->forTenant($branch->tenant_id)
@@ -222,7 +282,7 @@ class StockLocationController extends Controller
         return $warehouse;
     }
 
-    private function resolveParent(Request $request, int $tenantId, int $warehouseId, ?int $parentId, ?int $ignoreId = null): ?StockLocation
+    private function resolveParent(int $tenantId, int $warehouseId, ?int $parentId, ?int $ignoreId = null): ?StockLocation
     {
         if (! $parentId) {
             return null;
@@ -284,23 +344,50 @@ class StockLocationController extends Controller
         return $query->get();
     }
 
-    private function availableParents($user, ?int $warehouseId, ?int $ignoreId = null)
+    private function availableParents($user, ?int $warehouseId, ?int $ignoreId = null): \Illuminate\Support\Collection
     {
         if (! $warehouseId) {
             return collect();
         }
 
-        $query = StockLocation::query()
+        $all = StockLocation::query()
             ->forTenant($user->getAccessibleTenantId())
             ->forBranch($user->getAccessibleBranchId())
             ->where('warehouse_id', $warehouseId)
             ->where('is_active', true)
-            ->orderBy('name');
+            ->orderBy('name')
+            ->get()
+            ->keyBy('id');
 
+        $excludedIds = collect();
         if ($ignoreId) {
-            $query->whereKeyNot($ignoreId);
+            $excludedIds = $this->collectDescendantIds($all, $ignoreId);
+            $excludedIds->push($ignoreId);
         }
 
-        return $query->get();
+        $result = collect();
+        $this->flattenForSelect($all, null, 0, $excludedIds, $result);
+        return $result;
+    }
+
+    private function collectDescendantIds(\Illuminate\Support\Collection $all, int $parentId): \Illuminate\Support\Collection
+    {
+        $ids = collect();
+        foreach ($all->where('parent_id', $parentId) as $child) {
+            $ids->push($child->id);
+            $ids = $ids->merge($this->collectDescendantIds($all, $child->id));
+        }
+        return $ids;
+    }
+
+    private function flattenForSelect(\Illuminate\Support\Collection $all, ?int $parentId, int $depth, \Illuminate\Support\Collection $excludedIds, \Illuminate\Support\Collection &$result): void
+    {
+        foreach ($all->where('parent_id', $parentId)->sortBy('name') as $loc) {
+            if ($excludedIds->contains($loc->id)) {
+                continue;
+            }
+            $result->push((object) ['id' => $loc->id, 'code' => $loc->code, 'name' => $loc->name, 'depth' => $depth]);
+            $this->flattenForSelect($all, $loc->id, $depth + 1, $excludedIds, $result);
+        }
     }
 }

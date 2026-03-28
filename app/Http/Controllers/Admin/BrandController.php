@@ -49,7 +49,7 @@ class BrandController extends Controller
                 'required',
                 'string',
                 'max:100',
-                Rule::unique('brands', 'name')->where(fn ($query) => $query->where('tenant_id', $tenantId)),
+                Rule::unique('brands', 'name')->where(fn ($query) => $query->where('tenant_id', $tenantId))->withoutTrashed(),
             ],
             'is_active' => ['boolean'],
         ]);
@@ -80,6 +80,7 @@ class BrandController extends Controller
                 Rule::unique('brands', 'name')
                     ->ignore($brand->id)
                     ->where(fn ($query) => $query->where('tenant_id', $brand->tenant_id))
+                    ->withoutTrashed()
             ],
             'is_active' => ['boolean'],
         ]);
@@ -98,5 +99,15 @@ class BrandController extends Controller
 
         return redirect()->route('admin.brands.index')
             ->with('success', 'Brand berhasil dinonaktifkan.');
+    }
+
+    public function destroy(Brand $brand): RedirectResponse
+    {
+        Gate::authorize('delete', $brand);
+
+        $brand->delete();
+
+        return redirect()->route('admin.brands.index')
+            ->with('success', 'Brand berhasil dihapus.');
     }
 }

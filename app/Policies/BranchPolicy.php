@@ -46,4 +46,14 @@ class BranchPolicy
         return $user->canAccessTenant($branch->tenant_id)
             && ($user->isGlobal() || $user->canAccessBranch($branch->id));
     }
+
+    public function delete(User $user, Branch $branch): bool
+    {
+        if (! $user->hasPermission('branches.delete')) {
+            return false;
+        }
+
+        return $user->canAccessTenant($branch->tenant_id)
+            && ($user->isGlobal() || $user->canAccessBranch($branch->id));
+    }
 }

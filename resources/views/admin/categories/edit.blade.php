@@ -15,10 +15,13 @@
                     <select name="parent_id"
                         class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
                         <option value="">— Tidak ada (root) —</option>
-                        @foreach($parents as $parent)
-                            <option value="{{ $parent->id }}" {{ old('parent_id', $category->parent_id) == $parent->id ? 'selected' : '' }}>{{ $parent->name }}</option>
+                        @foreach($parents as $opt)
+                            <option value="{{ $opt->id }}" {{ old('parent_id', $category->parent_id) == $opt->id ? 'selected' : '' }}>
+                                {{ str_repeat('— ', $opt->depth) }}{{ $opt->name }}
+                            </option>
                         @endforeach
                     </select>
+                    @error('parent_id')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                 </div>
 
                 <div class="mb-4">

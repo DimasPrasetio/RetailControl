@@ -52,16 +52,19 @@ class PermissionSeeder extends Seeder
         'branches.create' => 'Tambah Cabang',
         'branches.update' => 'Edit Cabang',
         'branches.deactivate' => 'Nonaktifkan Cabang',
+        'branches.delete' => 'Hapus Cabang',
         'warehouses.view' => 'Lihat Gudang',
         'warehouses.create' => 'Tambah Gudang',
         'warehouses.update' => 'Edit Gudang',
         'warehouses.deactivate' => 'Nonaktifkan Gudang',
+        'warehouses.delete' => 'Hapus Gudang',
 
         // Master Data - Items (SKU)
         'items.view' => 'Lihat Master Produk',
         'items.create' => 'Tambah Master Produk',
         'items.update' => 'Edit Master Produk',
         'items.deactivate' => 'Nonaktifkan Master Produk',
+        'items.delete' => 'Hapus Master Produk',
         'items.import' => 'Import Master Produk dari Excel',
         'items.manage_barcodes' => 'Kelola Barcode / QR Code Produk',
 
@@ -70,29 +73,34 @@ class PermissionSeeder extends Seeder
         'brands.create' => 'Tambah Brand',
         'brands.update' => 'Edit Brand',
         'brands.deactivate' => 'Nonaktifkan Brand',
+        'brands.delete' => 'Hapus Brand',
 
         // Master Data - Categories
         'categories.view' => 'Lihat Kategori',
         'categories.create' => 'Tambah Kategori',
         'categories.update' => 'Edit Kategori',
         'categories.deactivate' => 'Nonaktifkan Kategori',
+        'categories.delete' => 'Hapus Kategori',
 
         // Master Data - Units of Measure
         'uoms.view' => 'Lihat Satuan (UoM)',
         'uoms.create' => 'Tambah Satuan (UoM)',
         'uoms.update' => 'Edit Satuan (UoM)',
         'uoms.deactivate' => 'Nonaktifkan Satuan (UoM)',
+        'uoms.delete' => 'Hapus Satuan (UoM)',
 
         // Product Attribute Definitions
         'attribute_definitions.view' => 'Lihat Definisi Atribut Produk',
         'attribute_definitions.create' => 'Tambah Definisi Atribut Produk',
         'attribute_definitions.update' => 'Edit Definisi Atribut Produk',
+        'attribute_definitions.delete' => 'Hapus Definisi Atribut Produk',
 
         // Stock Locations
         'stock_locations.view' => 'Lihat Lokasi Stok',
         'stock_locations.create' => 'Tambah Lokasi Stok',
         'stock_locations.update' => 'Edit Lokasi Stok',
         'stock_locations.deactivate' => 'Nonaktifkan Lokasi Stok',
+        'stock_locations.delete' => 'Hapus Lokasi Stok',
     ];
 
     public function run(): void

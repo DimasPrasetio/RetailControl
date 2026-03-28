@@ -7,10 +7,11 @@ use App\Traits\BranchScoped;
 use App\Traits\TenantScoped;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Warehouse extends Model
 {
-    use Auditable, BranchScoped, TenantScoped;
+    use Auditable, BranchScoped, SoftDeletes, TenantScoped;
 
     protected $fillable = [
         'tenant_id',

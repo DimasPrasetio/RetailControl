@@ -42,7 +42,7 @@ class StoreWarehouseRequest extends FormRequest
                 'string',
                 'max:30',
                 'regex:/^[A-Z0-9_-]+$/',
-                Rule::unique('warehouses', 'warehouse_code')->where(fn ($query) => $query->where('tenant_id', $tenantId)),
+                Rule::unique('warehouses', 'warehouse_code')->where(fn ($query) => $query->where('tenant_id', $tenantId))->withoutTrashed(),
             ],
             'name' => ['required', 'string', 'max:100'],
             'type' => ['nullable', Rule::in(['MAIN', 'SECONDARY', 'RETURNS'])],

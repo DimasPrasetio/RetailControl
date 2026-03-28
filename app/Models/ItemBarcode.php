@@ -5,10 +5,11 @@ namespace App\Models;
 use App\Traits\TenantScoped;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ItemBarcode extends Model
 {
-    use TenantScoped;
+    use SoftDeletes, TenantScoped;
 
     protected $fillable = ['tenant_id', 'item_id', 'item_unit_id', 'barcode', 'is_primary'];
 

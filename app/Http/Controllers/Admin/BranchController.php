@@ -89,7 +89,7 @@ class BranchController extends Controller
                     'warehouse_id' => $mainWarehouse->id,
                     'code' => "{$branch->branch_code}-MAIN-ROOT",
                     'name' => "Lokasi Utama {$branch->name}",
-                    'type' => 'WAREHOUSE',
+                    'system_type' => 'WAREHOUSE',
                     'is_active' => true,
                 ]);
             }
@@ -152,6 +152,17 @@ class BranchController extends Controller
         return redirect()
             ->route('admin.branches.index')
             ->with('success', 'Cabang berhasil diaktifkan kembali.');
+    }
+
+    public function destroy(Branch $branch): RedirectResponse
+    {
+        Gate::authorize('delete', $branch);
+
+        $branch->delete();
+
+        return redirect()
+            ->route('admin.branches.index')
+            ->with('success', 'Cabang berhasil dihapus.');
     }
 
     private function availableTenants($user, ?int $selectedTenantId = null)

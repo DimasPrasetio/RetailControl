@@ -46,4 +46,14 @@ class StockLocationPolicy
         return $user->canAccessTenant($stockLocation->tenant_id)
             && ($user->isGlobal() || $user->canAccessBranch($stockLocation->branch_id));
     }
+
+    public function delete(User $user, StockLocation $stockLocation): bool
+    {
+        if (! $user->hasPermission('stock_locations.delete')) {
+            return false;
+        }
+
+        return $user->canAccessTenant($stockLocation->tenant_id)
+            && ($user->isGlobal() || $user->canAccessBranch($stockLocation->branch_id));
+    }
 }

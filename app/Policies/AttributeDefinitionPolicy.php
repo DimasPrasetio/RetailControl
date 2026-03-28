@@ -28,4 +28,10 @@ class AttributeDefinitionPolicy
         return $user->hasPermission('attribute_definitions.update')
             && $user->canAccessTenant($attributeDefinition->tenant_id);
     }
+
+    public function delete(User $user, AttributeDefinition $attributeDefinition): bool
+    {
+        return $user->hasPermission('attribute_definitions.delete')
+            && $user->canAccessTenant($attributeDefinition->tenant_id);
+    }
 }

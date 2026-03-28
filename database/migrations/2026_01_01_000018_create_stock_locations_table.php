@@ -16,12 +16,14 @@ return new class extends Migration
             $table->foreignId('parent_id')->nullable()->constrained('stock_locations')->nullOnDelete();
             $table->string('code', 40);
             $table->string('name', 100);
-            $table->enum('type', ['BRANCH', 'WAREHOUSE', 'AREA', 'SUB_AREA'])->default('WAREHOUSE');
+            $table->enum('system_type', ['BRANCH', 'WAREHOUSE'])->nullable();
+            $table->string('label', 50)->nullable();
             $table->json('metadata_json')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
+            $table->softDeletes();
 
-            $table->unique(['tenant_id', 'code']);
+            $table->index(['tenant_id', 'code']);
             $table->index(['tenant_id', 'branch_id', 'warehouse_id', 'is_active']);
         });
     }

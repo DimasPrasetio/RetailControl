@@ -15,7 +15,7 @@ trait InteractsWithTenantContext
         if (! $request->user()->isPlatformAdmin()) {
             if (! $request->user()->tenant_id) {
                 throw ValidationException::withMessages([
-                    $field => 'User ini belum terikat ke tenant aktif.',
+                    $field => 'User ini belum terikat ke perusahaan aktif.',
                 ]);
             }
 
@@ -25,20 +25,20 @@ trait InteractsWithTenantContext
         $tenantId = $request->integer($field);
         if (! $tenantId) {
             throw ValidationException::withMessages([
-                $field => 'Tenant wajib dipilih.',
+                $field => 'Perusahaan wajib dipilih.',
             ]);
         }
 
         $tenant = Tenant::query()->find($tenantId);
         if (! $tenant) {
             throw ValidationException::withMessages([
-                $field => 'Tenant yang dipilih tidak ditemukan.',
+                $field => 'Perusahaan yang dipilih tidak ditemukan.',
             ]);
         }
 
         if (! $tenant->is_active) {
             throw ValidationException::withMessages([
-                $field => 'Tenant yang dipilih tidak aktif.',
+                $field => 'Perusahaan yang dipilih tidak aktif.',
             ]);
         }
 

@@ -8,10 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.4.1/dist/css/tom-select.default.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.1/dist/js/tom-select.complete.min.js"></script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="h-full bg-gray-50 font-sans antialiased" x-data="{ sidebarOpen: false }">
@@ -283,6 +281,78 @@
     </div>
 </div>
 
+{{-- Delete Confirmation Modal --}}
+<div
+    x-data="deleteModal()"
+    @open-delete-modal.window="openFor($event.detail.formId, $event.detail.itemName)"
+    @keydown.escape.window="close()"
+    x-show="open"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    style="display: none;"
+    aria-modal="true"
+>
+    <div class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm" @click="close()"></div>
+
+    <div class="relative w-full max-w-md rounded-2xl bg-white shadow-2xl" @click.stop>
+        <div class="p-6">
+            <div class="mb-4 flex items-center gap-3">
+                <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
+                    <svg class="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-base font-semibold text-gray-900">Konfirmasi Hapus</h3>
+                    <p class="text-sm text-gray-500">Tindakan ini tidak dapat dibatalkan</p>
+                </div>
+            </div>
+
+            <p class="mb-4 text-sm text-gray-700">
+                Anda akan menghapus <span class="font-semibold text-gray-900" x-text="itemName"></span>.
+                Masukkan password Anda untuk melanjutkan.
+            </p>
+
+            <div class="mb-4">
+                <label for="delete-modal-password" class="mb-1.5 block text-xs font-medium text-gray-700">Password</label>
+                <input
+                    id="delete-modal-password"
+                    type="password"
+                    x-model="password"
+                    x-ref="passwordInput"
+                    @keydown.enter="submit()"
+                    placeholder="Masukkan password login Anda"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
+                    :class="error ? 'border-red-400 ring-2 ring-red-100' : ''"
+                    autocomplete="current-password"
+                >
+                <p x-show="error" x-text="errorMsg" class="mt-1.5 text-xs font-medium text-red-600"></p>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button
+                    type="button"
+                    @click="close()"
+                    class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                >
+                    Batal
+                </button>
+                <button
+                    type="button"
+                    @click="submit()"
+                    :disabled="loading"
+                    class="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+                >
+                    <svg x-show="loading" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    <span x-text="loading ? 'Memverifikasi...' : 'Ya, Hapus'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 window.confirmAction = function (event, form, title = 'Konfirmasi', msg = 'Yakin ingin melanjutkan aksi ini?') {
     event.preventDefault();
@@ -303,22 +373,71 @@ window.confirmAction = function (event, form, title = 'Konfirmasi', msg = 'Yakin
     });
 };
 
-document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.tom-select-init').forEach(function (element) {
-        if (element.tomselect) {
-            return;
-        }
+function deleteModal() {
+    return {
+        open: false,
+        formId: '',
+        itemName: '',
+        password: '',
+        error: false,
+        errorMsg: '',
+        loading: false,
 
-        new TomSelect(element, {
-            create: false,
-            sortField: {
-                field: 'text',
-                direction: 'asc',
-            },
-            dropdownParent: 'body',
-        });
-    });
-});
+        openFor(formId, itemName) {
+            this.formId = formId;
+            this.itemName = itemName;
+            this.password = '';
+            this.error = false;
+            this.errorMsg = '';
+            this.open = true;
+            this.$nextTick(() => this.$refs.passwordInput && this.$refs.passwordInput.focus());
+        },
+
+        close() {
+            this.open = false;
+        },
+
+        async submit() {
+            if (! this.password) {
+                this.error = true;
+                this.errorMsg = 'Password tidak boleh kosong.';
+                return;
+            }
+
+            this.loading = true;
+            this.error = false;
+
+            try {
+                const response = await fetch('{{ route('admin.confirm-password') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    },
+                    body: JSON.stringify({ password: this.password }),
+                });
+
+                const data = await response.json();
+
+                if (data.valid) {
+                    document.getElementById(this.formId).submit();
+                } else {
+                    this.error = true;
+                    this.errorMsg = 'Password salah. Silakan coba lagi.';
+                    this.password = '';
+                    this.$nextTick(() => this.$refs.passwordInput && this.$refs.passwordInput.focus());
+                }
+            } catch {
+                this.error = true;
+                this.errorMsg = 'Terjadi kesalahan. Silakan coba lagi.';
+            } finally {
+                this.loading = false;
+            }
+        },
+    };
+}
+
+// Custom select initialization is handled in resources/js/app.js (Vite bundle)
 </script>
 </body>
 </html>

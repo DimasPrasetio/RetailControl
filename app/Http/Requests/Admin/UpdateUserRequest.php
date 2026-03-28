@@ -30,13 +30,15 @@ class UpdateUserRequest extends FormRequest
                 'regex:/^[a-z0-9_]+$/',
                 Rule::unique('users', 'username')
                     ->ignore($userId)
-                    ->where(fn ($query) => $query->where('tenant_id', $tenantId)->whereNull('deleted_at')),
+                    ->where(fn ($query) => $query->where('tenant_id', $tenantId))
+                    ->withoutTrashed(),
             ],
             'email' => [
                 'nullable', 'email', 'max:150',
                 Rule::unique('users', 'email')
                     ->ignore($userId)
-                    ->where(fn ($query) => $query->where('tenant_id', $tenantId)->whereNull('deleted_at')),
+                    ->where(fn ($query) => $query->where('tenant_id', $tenantId))
+                    ->withoutTrashed(),
             ],
             'password' => ['nullable', 'confirmed', Password::min(8)->letters()->numbers()],
             'role_id' => ['required', 'exists:roles,id'],

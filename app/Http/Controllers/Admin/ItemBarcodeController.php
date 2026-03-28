@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Item;
 use App\Models\ItemBarcode;
 use App\Models\ItemUnit;
+use App\Exceptions\DuplicateBarcodeException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,13 +30,7 @@ class ItemBarcodeController extends Controller
         Gate::authorize('manageBarcodes', $item);
 
         $request->validate([
-            'barcode' => [
-                'required',
-                'string',
-                'max:100',
-                Rule::unique('item_barcodes', 'barcode')
-                    ->where(fn($query) => $query->where('tenant_id', $item->tenant_id)),
-            ],
+            'barcode' => ['required', 'string', 'max:100'],
             'item_unit_id' => [
                 'nullable',
                 Rule::exists('item_units', 'id')
@@ -43,31 +38,43 @@ class ItemBarcodeController extends Controller
             ],
         ], [
             'barcode.required' => 'Barcode wajib diisi.',
-            'barcode.unique' => 'Barcode ini sudah dipakai oleh produk lain di tenant yang sama.',
             'item_unit_id.exists' => 'Satuan tidak valid untuk produk ini.',
         ]);
 
-        $isPrimary = $request->boolean('is_primary');
+        $barcode    = trim($request->input('barcode'));
+        $isPrimary  = $request->boolean('is_primary');
 
-        DB::transaction(function () use ($request, $item, $isPrimary): void {
-            // Jika set primary, lepas primary lama terlebih dahulu
-            if ($isPrimary) {
-                $item->barcodes()->update(['is_primary' => false]);
-            }
+        try {
+            DB::transaction(function () use ($item, $barcode, $isPrimary, $request): void {
+                // Locked re-check inside transaction to prevent race condition
+                $conflict = ItemBarcode::query()
+                    ->where('tenant_id', $item->tenant_id)
+                    ->where('barcode', $barcode)
+                    ->lockForUpdate()
+                    ->exists();
 
-            // Jika ini barcode pertama, otomatis jadikan primary
-            if ($item->barcodes()->count() === 0) {
-                $isPrimary = true;
-            }
+                if ($conflict) {
+                    throw new DuplicateBarcodeException($barcode);
+                }
 
-            ItemBarcode::create([
-                'tenant_id' => $item->tenant_id,
-                'item_id' => $item->id,
-                'item_unit_id' => $request->input('item_unit_id') ?: null,
-                'barcode' => $request->input('barcode'),
-                'is_primary' => $isPrimary,
-            ]);
-        });
+                if ($isPrimary) {
+                    $item->barcodes()->update(['is_primary' => false]);
+                }
+
+                // Barcode pertama otomatis jadi primary
+                $setAsPrimary = $isPrimary || $item->barcodes()->count() === 0;
+
+                ItemBarcode::create([
+                    'tenant_id'    => $item->tenant_id,
+                    'item_id'      => $item->id,
+                    'item_unit_id' => $request->input('item_unit_id') ?: null,
+                    'barcode'      => $barcode,
+                    'is_primary'   => $setAsPrimary,
+                ]);
+            });
+        } catch (DuplicateBarcodeException $e) {
+            return back()->withErrors(['barcode' => $e->getMessage()])->withInput();
+        }
 
         return redirect()->route('admin.items.barcodes.index', $item)
             ->with('success', 'Barcode berhasil ditambahkan.');

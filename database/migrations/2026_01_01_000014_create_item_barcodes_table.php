@@ -16,8 +16,9 @@ return new class extends Migration
             $table->string('barcode', 100);
             $table->boolean('is_primary')->default(false);
             $table->timestamps();
+            $table->softDeletes();
 
-            $table->unique(['tenant_id', 'barcode']);
+            $table->index(['tenant_id', 'barcode']);
             $table->index(['item_id', 'is_primary']);
         });
     }

@@ -18,8 +18,9 @@ return new class extends Migration
             $table->json('options_json')->nullable();
             $table->boolean('is_required')->default(false);
             $table->timestamps();
+            $table->softDeletes();
 
-            $table->unique(['tenant_id', 'key']);
+            $table->index(['tenant_id', 'key']);
         });
 
         Schema::create('category_attribute_sets', function (Blueprint $table) {

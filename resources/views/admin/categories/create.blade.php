@@ -12,11 +12,11 @@
 
                 @if(auth()->user()->isPlatformAdmin())
                     <div class="mb-4">
-                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Tenant <span class="text-red-500">*</span></label>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Perusahaan <span class="text-red-500">*</span></label>
                         <select name="tenant_id"
                             onchange="window.location='{{ route('admin.categories.create') }}?tenant_id=' + this.value"
                             class="tom-select-init w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100 @error('tenant_id') border-red-400 @enderror">
-                            <option value="">- Pilih tenant -</option>
+                            <option value="">- Pilih perusahaan -</option>
                             @foreach($tenants as $tenant)
                                 <option value="{{ $tenant->id }}" {{ old('tenant_id', $selectedTenantId) == $tenant->id ? 'selected' : '' }}>{{ $tenant->name }}</option>
                             @endforeach
@@ -30,15 +30,16 @@
                     <select name="parent_id"
                         class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring focus:ring-blue-100">
                         <option value="">— Tidak ada (root) —</option>
-                        @foreach($parents as $parent)
-                            <option value="{{ $parent->id }}" {{ old('parent_id') == $parent->id ? 'selected' : '' }}>
-                                {{ $parent->name }}
+                        @foreach($parents as $opt)
+                            <option value="{{ $opt->id }}" {{ old('parent_id') == $opt->id ? 'selected' : '' }}>
+                                {{ str_repeat('— ', $opt->depth) }}{{ $opt->name }}
                             </option>
                         @endforeach
                     </select>
                     @if(auth()->user()->isPlatformAdmin() && ! old('tenant_id', $selectedTenantId))
-                        <p class="mt-1 text-xs text-gray-500">Pilih tenant terlebih dahulu untuk memuat parent kategori tenant tersebut.</p>
+                        <p class="mt-1 text-xs text-gray-500">Pilih perusahaan terlebih dahulu untuk memuat parent kategori.</p>
                     @endif
+                    @error('parent_id')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                 </div>
 
                 <div class="mb-4">

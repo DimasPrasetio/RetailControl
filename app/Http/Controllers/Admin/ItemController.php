@@ -145,6 +145,16 @@ class ItemController extends Controller
             ->with('success', 'Produk berhasil dinonaktifkan.');
     }
 
+    public function destroy(Item $item): RedirectResponse
+    {
+        Gate::authorize('delete', $item);
+
+        $item->delete();
+
+        return redirect()->route('admin.items.index')
+            ->with('success', 'Produk berhasil dihapus.');
+    }
+
     // ─── Import ───────────────────────────────────────────────────────────────
 
     public function importForm(Request $request): View
@@ -228,10 +238,12 @@ class ItemController extends Controller
         if ($item) {
             $skuRule[] = Rule::unique('items', 'sku_code')
                 ->ignore($item->id)
-                ->where(fn ($query) => $query->where('tenant_id', $tenantId));
+                ->where(fn ($query) => $query->where('tenant_id', $tenantId))
+                ->withoutTrashed();
         } else {
             $skuRule[] = Rule::unique('items', 'sku_code')
-                ->where(fn ($query) => $query->where('tenant_id', $tenantId));
+                ->where(fn ($query) => $query->where('tenant_id', $tenantId))
+                ->withoutTrashed();
         }
 
         $validator = Validator::make($request->all(), [
@@ -309,6 +321,11 @@ class ItemController extends Controller
             $data['purchase_uom_id'] ? (int) $data['purchase_uom_id'] : null,
             $this->normalizedItemUnits($request)
         );
+
+        // Convert cost_price from purchase unit to base unit before storing
+        if (isset($data['cost_price']) && $data['cost_price'] !== null && $data['pack_qty'] > 1) {
+            $data['cost_price'] = round($data['cost_price'] / $data['pack_qty'], 4);
+        }
 
         return $data;
     }

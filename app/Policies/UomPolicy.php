@@ -34,4 +34,10 @@ class UomPolicy
         return $user->hasPermission('uoms.deactivate')
             && $user->canAccessTenant($uom->tenant_id);
     }
+
+    public function delete(User $user, Uom $uom): bool
+    {
+        return $user->hasPermission('uoms.delete')
+            && $user->canAccessTenant($uom->tenant_id);
+    }
 }

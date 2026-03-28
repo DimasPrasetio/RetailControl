@@ -45,4 +45,10 @@ class ItemPolicy
         return $user->hasPermission('items.manage_barcodes')
             && $user->canAccessTenant($item->tenant_id);
     }
+
+    public function delete(User $user, Item $item): bool
+    {
+        return $user->hasPermission('items.delete')
+            && $user->canAccessTenant($item->tenant_id);
+    }
 }

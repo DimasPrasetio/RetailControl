@@ -110,7 +110,8 @@ class AttributeDefinitionController extends Controller
     private function validated(Request $request, int $tenantId, ?AttributeDefinition $attributeDefinition = null): array
     {
         $uniqueKey = Rule::unique('attribute_definitions', 'key')
-            ->where(fn ($query) => $query->where('tenant_id', $tenantId));
+            ->where(fn ($query) => $query->where('tenant_id', $tenantId))
+            ->withoutTrashed();
 
         if ($attributeDefinition) {
             $uniqueKey->ignore($attributeDefinition->id);
@@ -129,6 +130,17 @@ class AttributeDefinitionController extends Controller
                 Rule::exists('categories', 'id')->where(fn ($query) => $query->where('tenant_id', $tenantId)),
             ],
         ]);
+    }
+
+    public function destroy(AttributeDefinition $attributeDefinition): RedirectResponse
+    {
+        Gate::authorize('delete', $attributeDefinition);
+
+        $attributeDefinition->delete();
+
+        return redirect()
+            ->route('admin.attribute-definitions.index')
+            ->with('success', 'Definisi atribut berhasil dihapus.');
     }
 
     private function availableCategories(?int $tenantId)

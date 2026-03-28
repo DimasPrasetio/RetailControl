@@ -29,8 +29,9 @@ return new class extends Migration
             $table->json('custom_fields_json')->nullable();
             $table->json('raw_source_json')->nullable();
             $table->timestamps();
+            $table->softDeletes();
 
-            $table->unique(['tenant_id', 'sku_code']);
+            $table->index(['tenant_id', 'sku_code']);
             $table->index(['tenant_id', 'brand_id', 'category_id', 'is_active']);
         });
     }

@@ -34,4 +34,10 @@ class CategoryPolicy
         return $user->hasPermission('categories.deactivate')
             && $user->canAccessTenant($category->tenant_id);
     }
+
+    public function delete(User $user, Category $category): bool
+    {
+        return $user->hasPermission('categories.delete')
+            && $user->canAccessTenant($category->tenant_id);
+    }
 }

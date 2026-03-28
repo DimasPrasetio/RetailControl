@@ -16,8 +16,9 @@ return new class extends Migration
             $table->string('code', 20)->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
+            $table->softDeletes();
 
-            $table->unique(['tenant_id', 'code']);
+            $table->index(['tenant_id', 'code']);
             $table->index(['tenant_id', 'parent_id', 'is_active']);
         });
     }

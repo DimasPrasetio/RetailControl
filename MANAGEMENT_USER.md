@@ -1,9 +1,9 @@
-MANAGEMENT USER
-Last verified: 2026-03-11
+# MANAGEMENT USER
+Last verified: 2026-03-28
 
-1. Ringkasan
+## 1. Ringkasan
 
-Modul user saat ini sudah menjadi fondasi akses untuk sistem multi-tenant:
+Modul user sudah menjadi fondasi akses untuk sistem multi-tenant:
 - multi-tenant dasar aktif
 - role dan permission aktif (sesuai PRD: Super Admin, Owner, Admin, Kasir)
 - branch scoping aktif
@@ -18,7 +18,9 @@ Arsitektur saat ini masih lean:
 - audit memakai trait + service kecil
 - tenant isolation dilakukan di query, validation, policy, dan model create hook
 
-2. Scope yang Sudah Implemented
+---
+
+## 2. Scope yang Sudah Implemented
 
 - Login memakai username atau email
 - Remember me 7 hari
@@ -31,9 +33,11 @@ Arsitektur saat ini masih lean:
 - Admin dan kasir branch-scoped
 - Audit log untuk create, update, delete, login, logout
 
-3. Model dan Tabel yang Dipakai
+---
 
-users
+## 3. Model dan Tabel yang Dipakai
+
+**users**
 - id
 - name
 - username
@@ -46,16 +50,18 @@ users
 - remember_token
 - soft deletes
 
-roles
-- name dicast ke App\Enums\RoleEnum
+> Catatan schema: `(tenant_id, username)` dan `(tenant_id, email)` menggunakan **plain index** (bukan DB unique constraint) karena soft delete. Uniqueness di-enforce di level aplikasi menggunakan `Rule::unique()->withoutTrashed()`.
 
-permissions
+**roles**
+- name dicast ke `App\Enums\RoleEnum`
+
+**permissions**
 - slug dan name
 
-role_permissions
+**role_permissions**
 - pivot role ke permission
 
-audit_logs
+**audit_logs**
 - user_id nullable
 - tenant_id nullable
 - action
@@ -67,41 +73,37 @@ audit_logs
 - user_agent
 - created_at
 
-Aturan penting schema:
-- unique users dibuat per tenant untuk username dan email
-- super_admin boleh tenant_id = null dan branch_id = null
-- role non super_admin wajib punya tenant
-- role branch-scoped wajib punya branch
-- role global tenant seperti owner tidak memakai branch_id
+---
 
-4. Aturan Role Saat Ini (sesuai PRD §11.2)
+## 4. Aturan Role Saat Ini (sesuai PRD §11.2)
 
-super_admin
+**super_admin**
 - bypass semua permission
 - global lintas tenant
 - tidak terikat tenant atau branch
 
-owner
+**owner**
 - tenant-scoped
 - global lintas semua branch dalam tenant yang sama
 - read-heavy, tidak punya permission CRUD user
 - tidak memerlukan branch_id
 
-admin
+**admin**
 - tenant-scoped
 - branch-scoped
 - bisa lihat user dan deactivate user non-superadmin dalam scope yang sah
 - tidak bisa create atau update user
 
-kasir
+**kasir**
 - tenant-scoped
 - branch-scoped
 - tidak punya akses user management
 
-Catatan: Role "accounting" telah dihapus karena tidak terdefinisi dalam PRD §11.2.
-Behavior yang sebelumnya dipegang accounting (read global lintas branch) sudah diemban oleh role Owner.
+> Catatan: Role "accounting" telah dihapus karena tidak terdefinisi dalam PRD §11.2. Behavior yang sebelumnya dipegang accounting (read global lintas branch) sudah diemban oleh role Owner.
 
-5. Tenant dan Branch Rules
+---
+
+## 5. Tenant dan Branch Rules
 
 Rule yang sekarang enforced di code:
 - platform admin wajib memilih tenant saat membuat user non-superadmin
@@ -114,48 +116,58 @@ Rule yang sekarang enforced di code:
 - role non-global wajib punya branch_id
 
 Implementasi penting:
-- app/Http/Requests/Admin/StoreUserRequest.php
-- app/Http/Requests/Admin/UpdateUserRequest.php
-- app/Policies/UserPolicy.php
-- app/Models/User.php
-- app/Enums/RoleEnum.php
-- app/Traits/TenantScoped.php
+- `app/Http/Requests/Admin/StoreUserRequest.php`
+- `app/Http/Requests/Admin/UpdateUserRequest.php`
+- `app/Policies/UserPolicy.php`
+- `app/Models/User.php`
+- `app/Enums/RoleEnum.php`
+- `app/Traits/TenantScoped.php`
 
-6. Access Control
+---
+
+## 6. Access Control
 
 Permission user management:
-- users.view
-- users.create
-- users.update
-- users.deactivate
-- users.delete
+- `users.view`
+- `users.create`
+- `users.update`
+- `users.deactivate`
+- `users.delete`
 
 Policy behavior:
-- viewAny: butuh users.view
-- create: butuh users.create
-- update: butuh users.update dan target harus masih dalam scope tenant atau branch yang sah
-- deactivate: butuh users.deactivate, tidak boleh self-deactivate, tidak boleh target super_admin
-- delete: butuh users.delete, tidak boleh self-delete, tidak boleh target super_admin
+- **viewAny**: butuh `users.view`
+- **create**: butuh `users.create`
+- **update**: butuh `users.update` dan target harus masih dalam scope tenant atau branch yang sah
+- **deactivate**: butuh `users.deactivate`, tidak boleh self-deactivate, tidak boleh target super_admin
+- **delete**: butuh `users.delete`, tidak boleh self-delete, tidak boleh target super_admin
 
-7. HTTP Routes
+---
 
-- GET /login
-- POST /login
-- POST /logout
-- GET /admin/users
-- GET /admin/users/create
-- POST /admin/users
-- GET /admin/users/{user}/edit
-- PUT /admin/users/{user}
-- PATCH /admin/users/{user}/deactivate
-- DELETE /admin/users/{user}
-- GET /admin/audit-logs
+## 7. HTTP Routes
 
-8. UI Behavior yang Relevan
+```
+GET  /login
+POST /login
+POST /logout
+
+GET    /admin/users
+GET    /admin/users/create
+POST   /admin/users
+GET    /admin/users/{user}/edit
+PUT    /admin/users/{user}
+PATCH  /admin/users/{user}/deactivate
+DELETE /admin/users/{user}
+
+GET    /admin/audit-logs
+```
+
+---
+
+## 8. UI Behavior yang Relevan
 
 User create/edit:
 - tenant selector tampil untuk super_admin
-- branch selector ditampilkan atau disembunyikan berdasarkan role.requiresBranch()
+- branch selector ditampilkan atau disembunyikan berdasarkan `role.requiresBranch()`
 - branch list dibatasi sesuai tenant dan role user yang sedang login
 - branch list hanya memuat branch aktif, kecuali branch yang sedang dipakai pada edit
 
@@ -164,7 +176,9 @@ User index:
 - owner bisa filter branch di tenant sendiri
 - admin dan kasir terkunci ke branch masing-masing
 
-9. Seeder dan Data Awal
+---
+
+## 9. Seeder dan Data Awal
 
 Seeder yang relevan:
 - TenantSeeder
@@ -175,10 +189,12 @@ Seeder yang relevan:
 - SuperAdminSeeder
 
 Super admin default:
-- username: superadmin
-- email: superadmin@yopmail.com
+- username: `superadmin`
+- email: `superadmin@yopmail.com`
 
-10. Test Coverage
+---
+
+## 10. Test Coverage
 
 Feature test yang aktif:
 - T0101AdminCreatesUserTest
@@ -197,7 +213,9 @@ Coverage yang sudah terbukti:
 - remember me 7 hari
 - branch scoping
 
-11. Catatan Alignment dengan PRD
+---
+
+## 11. Catatan Alignment dengan PRD
 
 Sudah selaras:
 - role dan akses sudah dibedakan sesuai PRD §11.2 (Super Admin, Owner, Admin, Kasir)
@@ -214,6 +232,8 @@ Belum ada di modul ini:
 - monitoring tenant level untuk SaaS billing
 - multi-role per user
 
-12. Kesimpulan
+---
+
+## 12. Kesimpulan
 
 Modul user sekarang selaras penuh dengan PRD §11.2. Role accounting yang sebelumnya ada telah dihapus karena tidak terdefinisi dalam PRD. Tenant isolation, branch scoping, role global tenant, dan audit trail sudah berjalan di level query, request validation, policy, dan model. Area yang belum ada masih lebih ke workflow administrasi SaaS, bukan kekurangan fondasi akses inti.

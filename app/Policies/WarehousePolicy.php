@@ -46,4 +46,14 @@ class WarehousePolicy
         return $user->canAccessTenant($warehouse->tenant_id)
             && ($user->isGlobal() || $user->canAccessBranch($warehouse->branch_id));
     }
+
+    public function delete(User $user, Warehouse $warehouse): bool
+    {
+        if (! $user->hasPermission('warehouses.delete')) {
+            return false;
+        }
+
+        return $user->canAccessTenant($warehouse->tenant_id)
+            && ($user->isGlobal() || $user->canAccessBranch($warehouse->branch_id));
+    }
 }

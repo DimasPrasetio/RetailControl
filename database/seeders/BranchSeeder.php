@@ -58,7 +58,7 @@ class BranchSeeder extends Seeder
                         'branch_id' => $branch->id,
                         'warehouse_id' => $mainWarehouse->id,
                         'name' => "Lokasi Utama {$branch->name}",
-                        'type' => 'WAREHOUSE',
+                        'system_type' => 'WAREHOUSE',
                         'is_active' => true,
                     ]
                 );

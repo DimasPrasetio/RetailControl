@@ -7,10 +7,11 @@ use App\Traits\TenantScoped;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Uom extends Model
 {
-    use Auditable, TenantScoped;
+    use Auditable, SoftDeletes, TenantScoped;
 
     protected $fillable = ['tenant_id', 'code', 'name', 'is_active'];
 

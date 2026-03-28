@@ -133,6 +133,23 @@ class WarehouseController extends Controller
             ->with('success', 'Gudang berhasil diaktifkan kembali.');
     }
 
+    public function destroy(Warehouse $warehouse): RedirectResponse
+    {
+        Gate::authorize('delete', $warehouse);
+
+        if ($warehouse->type === 'MAIN') {
+            return redirect()
+                ->route('admin.warehouses.index')
+                ->with('error', 'Gudang utama tidak dapat dihapus.');
+        }
+
+        $warehouse->delete();
+
+        return redirect()
+            ->route('admin.warehouses.index')
+            ->with('success', 'Gudang berhasil dihapus.');
+    }
+
     private function availableBranches($user, ?int $selectedBranchId = null)
     {
         $query = Branch::query()

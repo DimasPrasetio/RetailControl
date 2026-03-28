@@ -25,13 +25,13 @@ class StoreUserRequest extends FormRequest
             'username' => [
                 'required', 'string', 'max:50', 'min:3',
                 'regex:/^[a-z0-9_]+$/',
-                Rule::unique('users', 'username')->where(fn ($query) => $query->where('tenant_id', $tenantId)),
+                Rule::unique('users', 'username')->where(fn ($query) => $query->where('tenant_id', $tenantId))->withoutTrashed(),
             ],
             'email' => [
                 'nullable',
                 'email',
                 'max:150',
-                Rule::unique('users', 'email')->where(fn ($query) => $query->where('tenant_id', $tenantId)),
+                Rule::unique('users', 'email')->where(fn ($query) => $query->where('tenant_id', $tenantId))->withoutTrashed(),
             ],
             'password' => ['required', 'confirmed', Password::min(8)->letters()->numbers()],
             'role_id' => ['required', 'exists:roles,id'],

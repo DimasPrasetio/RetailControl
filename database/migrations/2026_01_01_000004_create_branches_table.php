@@ -20,8 +20,9 @@ return new class extends Migration
             $table->json('metadata_json')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
+            $table->softDeletes();
 
-            $table->unique(['tenant_id', 'branch_code']);
+            $table->index(['tenant_id', 'branch_code']);
             $table->index(['tenant_id', 'is_active', 'name']);
         });
     }
