@@ -39,6 +39,7 @@ class RolePermissionSeeder extends Seeder
             'attribute_definitions.view',
             'attribute_definitions.delete',
             'stock_locations.view',
+            'stock_locations.update',
             'stock_locations.delete',
         ],
 

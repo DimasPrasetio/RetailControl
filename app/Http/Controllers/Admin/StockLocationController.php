@@ -129,8 +129,6 @@ class StockLocationController extends Controller
     {
         Gate::authorize('update', $stockLocation);
 
-        abort_if($stockLocation->isSystemLocation(), 403, 'Lokasi sistem tidak dapat diubah manual.');
-
         return view('admin.stock-locations.edit', [
             'stockLocation' => $stockLocation,
             'branches' => $this->availableBranches($request->user(), $stockLocation->branch_id),
@@ -145,10 +143,22 @@ class StockLocationController extends Controller
     {
         Gate::authorize('update', $stockLocation);
 
-        abort_if($stockLocation->isSystemLocation(), 403, 'Lokasi sistem tidak dapat diubah manual.');
-
         $branch = $this->resolveBranch($request, $stockLocation->branch_id);
         $warehouse = $this->resolveWarehouse($branch, $stockLocation->warehouse_id);
+
+        // Lokasi sistem hanya boleh diubah name dan label-nya
+        if ($stockLocation->isSystemLocation()) {
+            $data = $request->validate([
+                'name'  => ['required', 'string', 'max:100'],
+                'label' => ['nullable', 'string', 'max:50'],
+            ]);
+            $stockLocation->update($data);
+
+            return redirect()
+                ->route('admin.stock-locations.index', ['branch_id' => $branch->id, 'warehouse_id' => $warehouse->id])
+                ->with('success', 'Nama lokasi sistem berhasil diperbarui.');
+        }
+
         $data = $this->validated($request, $stockLocation->tenant_id, $stockLocation);
         $parent = $this->resolveParent($stockLocation->tenant_id, $warehouse->id, $request->integer('parent_id'), $stockLocation->id);
 
